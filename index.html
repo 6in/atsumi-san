@@ -78,7 +78,7 @@
 </head>
 <body>
 <div id="view">
-  <div id="pocketLabels" style="position:absolute;width:100%;height:100%;pointer-events:none;font-size:14px;font-weight:bold;text-shadow:0 0 3px rgba(0,0,0,0.8);color:#ffcc00;"></div>
+  <div id="pocketLabels" style="position:absolute;width:100%;height:100%;pointer-events:none;"></div>
 </div>
 
 <div id="panel">
@@ -1455,13 +1455,14 @@ function updatePocketLabels() {
   labelDiv.innerHTML = '';
   for (let i = 0; i < POCKETS.length; i++) {
     const [px, pz] = POCKETS[i];
-    const p3 = new THREE.Vector3(px / 100, R, pz / 100);
+    const p3 = new THREE.Vector3(px / 100, 0.5, pz / 100);
     const p2 = p3.clone().project(camera);
     const x = (p2.x * 0.5 + 0.5) * renderer.domElement.clientWidth;
     const y = (-p2.y * 0.5 + 0.5) * renderer.domElement.clientHeight;
     const span = document.createElement('span');
     span.textContent = pocketLabels[i];
-    span.style.cssText = `position:absolute;left:${x}px;top:${y}px;transform:translate(-50%,-50%);color:#ffcc00;`;
+    span.style.cssText = `position:absolute;left:${x}px;top:${y}px;transform:translate(-50%,-50%);` +
+      `color:#ffff00;font-size:32px;font-weight:900;text-shadow:0 0 8px rgba(0,0,0,0.9), 0 0 4px rgba(255,255,0,0.5);letter-spacing:2px;`;
     labelDiv.appendChild(span);
   }
 }
