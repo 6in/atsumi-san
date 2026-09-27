@@ -95,12 +95,12 @@
       <div class="row"><label for="aim">向き先</label>
         <select id="aim">
           <option value="manual">手動（角度）</option>
-          <option value="0">左上コーナー</option>
-          <option value="1">上サイド</option>
-          <option value="2" selected>右上コーナー</option>
-          <option value="3">左下コーナー</option>
-          <option value="4">下サイド</option>
-          <option value="5">右下コーナー</option>
+          <option value="0">A（左下コーナー）</option>
+          <option value="1">B（下サイド）</option>
+          <option value="2" selected>C（右下コーナー）</option>
+          <option value="3">D（左上コーナー）</option>
+          <option value="4">E（上サイド）</option>
+          <option value="5">F（右上コーナー）</option>
         </select>
       </div>
       <div class="row"><label class="check"><input id="aimCushion" type="checkbox" checked>クッションを考慮して狙う</label></div>
@@ -1461,6 +1461,7 @@ function updatePocketLabels() {
     const p2 = p3.clone().project(camera);
     const x = (p2.x * 0.5 + 0.5) * renderer.domElement.clientWidth;
     const y = (-p2.y * 0.5 + 0.5) * renderer.domElement.clientHeight;
+    if (i === 0) console.log(`Pocket ${i}: px=${px}, pz=${pz} -> screen (${x.toFixed(0)}, ${y.toFixed(0)})`, {p3, p2});
     const span = document.createElement('span');
     span.textContent = pocketLabels[i];
     span.style.cssText = `position:absolute;left:${x}px;top:${y}px;transform:translate(-50%,-50%);` +
