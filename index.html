@@ -128,7 +128,7 @@
     #bar .tools { gap: 2px; }
     .tool { flex: 1 1 0; width: auto; min-width: 0; height: 50px; }
     .tool span { font-size: 10px; }
-    #actions { top: auto; bottom: max(12px, env(safe-area-inset-bottom)); flex-direction: column-reverse; align-items: flex-end; gap: 8px; }
+    #actions { top: auto; bottom: max(12px, env(safe-area-inset-bottom)); flex-direction: column; align-items: flex-end; gap: 8px; }
     body.menu-open #actions { display: none; }
     #actions { align-items: center; }
     #actions button { width: 48px; height: 48px; box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4); }
@@ -289,6 +289,15 @@
         <button id="viewTop" type="button">真上</button>
         <button id="viewSide" type="button">真横</button>
       </div>
+  <h2>目の位置</h2>
+  <div class="row"><label>見る目</label>
+    <div class="seg">
+      <input type="radio" name="eye" id="eyeL" value="left"><label for="eyeL">左目</label>
+      <input type="radio" name="eye" id="eyeC" value="center" checked><label for="eyeC">中央</label>
+      <input type="radio" name="eye" id="eyeR" value="right"><label for="eyeR">右目</label>
+    </div>
+  </div>
+  <p class="note">手球の真後ろ・ゴースト後方で、カメラを左右に 3.2cm（両目の間隔 6.4cm の半分）ずらします。利き目で見た厚みの確認に。</p>
 </div>
 
 <div class="menu" id="mSave" hidden>
@@ -356,6 +365,7 @@ const state = {
   simLoop: false,
   simPause: true,
   obNumber: 1,
+  eye: 'center',     // 撞く方向に沿った視点で使う目: left | center | right
   angle: 0,          // 的球の進行方向（度）。XZ 平面で +X から +Z 方向へ
   aim: '2',
   transparent: false,
@@ -982,9 +992,10 @@ function updateScene() {
       placeThickSplit(thickGhost, gp, side, d, -1);
     }
     if (thickWall.visible) {
-      // 手球の背面から PIERCE_TAIL 後方 〜 ゴーストボールの前端まで
+      // 手球の背面から PIERCE_TAIL 後方 〜 的球の縁まで。
+      // 的球は壁の面に接しており、その接点は的球中心を撞く方向へ投影した位置
       const start = state.cb.clone().addScaledVector(side, d).addScaledVector(cue, -(R + PIERCE_TAIL));
-      const length = state.cb.distanceTo(gp) + 2 * R + PIERCE_TAIL;
+      const length = state.ob.clone().sub(state.cb).dot(cue) + R + PIERCE_TAIL;
       thickWall.position.set(start.x, 0, start.z);
       thickWall.rotation.y = -Math.atan2(cue.z, cue.x);
       thickWall.scale.set(length, 2 * R, 1);
@@ -1256,7 +1267,16 @@ function updateOutline() {
 }
 
 // ---------- views ----------
+const EYE_HALF_IPD = 3.2;   // cm
+let currentView = null;
+// 撞く方向 u（水平単位ベクトル）に対して、選んだ目の側へカメラをずらす
+function applyEye(u) {
+  const k = state.eye === 'left' ? -1 : state.eye === 'right' ? 1 : 0;
+  camera.position.x += -u.z * EYE_HALF_IPD * k;
+  camera.position.z += u.x * EYE_HALF_IPD * k;
+}
 function setView(kind) {
+  currentView = kind;
   const dir = dirVec();
   const mid = ghostPos().add(state.ob).multiplyScalar(0.5);
   controls.target.copy(mid);
@@ -1274,6 +1294,7 @@ function setView(kind) {
     controls.target.copy(gp);
     camera.position.copy(state.cb).addScaledVector(u, -back);
     camera.position.y = R + back * tA;
+    applyEye(u);
   } else if (kind === 'top') {
     camera.position.set(mid.x, 90, mid.z + 0.01);
   } else if (kind === 'side') {
@@ -1281,8 +1302,17 @@ function setView(kind) {
     camera.position.copy(mid).addScaledVector(perp, 40);
     camera.position.y = R + 0.5;
   } else {
-    camera.position.copy(mid).addScaledVector(dir, -40);
-    camera.position.y = 22;
+    // ゴーストボールの真後ろ（手球→ゴーストの延長線上）から、ボール中心の高さで水平に見る（厚みの確認用）。
+    // 手球が視線をさえぎらないよう、手球が近いときはゴースト寄りにカメラを置く
+    const gp = ghostPos();
+    const u = new THREE.Vector3(gp.x - state.cb.x, 0, gp.z - state.cb.z);
+    const D = u.length();
+    if (D < 1e-6) u.copy(dir); else u.divideScalar(D);
+    const back = Math.min(6 * R, Math.max(D - 1.3 * R, 1.5 * R));
+    controls.target.copy(gp);
+    camera.position.copy(gp).addScaledVector(u, -back);
+    camera.position.y = R;
+    applyEye(u);
   }
   controls.update();
   scheduleAutosave();
@@ -1309,6 +1339,10 @@ $('tFollow').addEventListener('input', e => { state.throwFollow = +e.target.valu
 $('tSide').addEventListener('input', e => { state.throwSide = +e.target.value; updateScene(); });
 ui.aim.addEventListener('change', () => { state.aim = ui.aim.value; updateScene(); });
 $('obNum').addEventListener('change', e => { state.obNumber = +e.target.value; updateScene(); });
+document.querySelectorAll('input[name=eye]').forEach(el => el.addEventListener('change', () => {
+  state.eye = el.value;
+  if (currentView === 'cue' || currentView === 'behind') setView(currentView); else scheduleAutosave();
+}));
 function setManualAngle(deg) {
   state.aim = 'manual';
   ui.aim.value = 'manual';
@@ -1404,7 +1438,7 @@ container.addEventListener('pointerup', endDrag);
 container.addEventListener('pointercancel', endDrag);
 
 // ---------- persistence (Dexie / IndexedDB) ----------
-const SNAPSHOT_KEYS = ['obNumber', 'aim', 'angle', 'transparent', 'contactSize', 'arrowOn', 'arrowCount', 'arrowHeight', 'arrowStyle', 'aimCushion', 'grid', 'cbLine', 'cpLine', 'thickOn', 'thickWallOn', 'triOn', 'tanOn', 'throwOn', 'shotSpeed', 'throwFollow', 'throwSide', 'simLoop', 'simPause'];
+const SNAPSHOT_KEYS = ['obNumber', 'eye', 'aim', 'angle', 'transparent', 'contactSize', 'arrowOn', 'arrowCount', 'arrowHeight', 'arrowStyle', 'aimCushion', 'grid', 'cbLine', 'cpLine', 'thickOn', 'thickWallOn', 'triOn', 'tanOn', 'throwOn', 'shotSpeed', 'throwFollow', 'throwSide', 'simLoop', 'simPause'];
 
 function snapshot() {
   const o = { ob: { x: state.ob.x, z: state.ob.z }, cb: { x: state.cb.x, z: state.cb.z } };
@@ -1459,6 +1493,7 @@ function syncUI() {
     const el = document.querySelector(`input[name=${name}][value="${val}"]`);
     if (el) el.checked = true;
   };
+  radio('eye', state.eye);
   radio('csize', state.contactSize);
   radio('acount', state.arrowCount);
   radio('aheight', state.arrowHeight);
@@ -1905,9 +1940,26 @@ renderer.setAnimationLoop(now => {
 });
 </script>
 <script>
-  // importmap / CDN 読込失敗時の表示
+  // タップが素早く終わるとポインターが既に無効で setPointerCapture が NotFoundError を投げる
+  // （自前のドラッグ処理と OrbitControls の両方）。キャプチャできなくても操作に支障はないので無視する
+  for (const name of ['setPointerCapture', 'releasePointerCapture']) {
+    const orig = Element.prototype[name];
+    Element.prototype[name] = function (id) {
+      try { orig.call(this, id); } catch (err) { if (err.name !== 'NotFoundError') throw err; }
+    };
+  }
+
+  // スクリプト（CDN）の読み込み失敗は常時表示、実行時エラーは数秒で消す
+  let errTimer = 0;
   window.addEventListener('error', e => {
-    document.getElementById('err').textContent = '読み込みエラー: ' + (e.message || 'Three.js を取得できません');
+    const el = document.getElementById('err');
+    clearTimeout(errTimer);
+    if (e.target !== window) {
+      el.textContent = '読み込みエラー: ' + (e.target.src || 'Three.js を取得できません');
+      return;
+    }
+    el.textContent = 'エラー: ' + e.message;
+    errTimer = setTimeout(() => { el.textContent = ''; }, 6000);
   }, true);
 </script>
 </body>
