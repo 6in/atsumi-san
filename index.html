@@ -77,7 +77,9 @@
 </script>
 </head>
 <body>
-<div id="view"></div>
+<div id="view">
+  <div id="pocketLabels" style="position:absolute;width:100%;height:100%;pointer-events:none;font-size:14px;font-weight:bold;text-shadow:0 0 3px rgba(0,0,0,0.8);color:#ffcc00;"></div>
+</div>
 
 <div id="panel">
   <div class="head">
@@ -146,7 +148,7 @@
       <div class="row"><label>再生速度</label>
         <div class="seg">
           <input type="radio" name="simRate" id="sr0" value="1" checked><label for="sr0">1x</label>
-          <input type="radio" name="simRate" id="sr1" value="0.25"><label for="sr1">0.25x</label>
+          <input type="radio" name="simRate" id="sr1" value="0.5"><label for="sr1">0.5x</label>
         </div>
       </div>
       <div class="stat" id="simInfo">上の速さ・回転で、手球をゴーストボールに向けて撞きます</div>
@@ -1444,8 +1446,42 @@ function startSim() {
     `${fmt(1, '的球')}　${fmt(0, '手球')}　（${res.duration.toFixed(1)} 秒）`;
 }
 
+
+// ポケットラベル表示
+const pocketLabels = ['A', 'B', 'C', 'D', 'E', 'F'];
+function updatePocketLabels() {
+  const labelDiv = document.getElementById('pocketLabels');
+  if (!labelDiv) return;
+  labelDiv.innerHTML = '';
+  for (let i = 0; i < POCKETS.length; i++) {
+    const [px, pz] = POCKETS[i];
+    const p3 = new THREE.Vector3(px / 100, R, pz / 100);
+    const p2 = p3.clone().project(camera);
+    const x = (p2.x * 0.5 + 0.5) * renderer.domElement.clientWidth;
+    const y = (-p2.y * 0.5 + 0.5) * renderer.domElement.clientHeight;
+    const span = document.createElement('span');
+    span.textContent = pocketLabels[i];
+    span.style.cssText = `position:absolute;left:${x}px;top:${y}px;transform:translate(-50%,-50%);color:#ffcc00;`;
+    labelDiv.appendChild(span);
+  }
+}
+
+// 衝突検知: 球間距離 < 2R なら衝突フラグを立てる
+let collisionPause = null;
+
+function checkCollision(cb, ob) {
+  const dx = ob.x - cb.x, dz = ob.z - cb.z;
+  return Math.hypot(dx, dz) < 2 * R_M - 1e-6;
+}
+
 function tickSim(now) {
   if (!sim) return;
+  if (collisionPause) {
+    collisionPause -= (now - sim.last) / 1000;
+    if (collisionPause <= 0) collisionPause = null;
+    sim.last = now;
+    return;
+  }
   const rate = +document.querySelector('input[name=simRate]:checked').value;
   sim.t = Math.min(sim.duration, sim.t + ((now - sim.last) / 1000) * rate);
   sim.last = now;
@@ -1462,6 +1498,12 @@ function tickSim(now) {
     mesh.position.set(a[0] + (b[0] - a[0]) * k, R, a[1] + (b[1] - a[1]) * k);
   });
   sim.trails.forEach(l => { l.geometry.instanceCount = lo; });
+  // 衝突検判定
+  if (!collisionPause && lo < sim.frames.length - 1 && !f0.p[0][2] && !f0.p[1][2]) {
+    if (checkCollision({ x: f0.p[0][0] / 100, z: f0.p[0][1] / 100 }, { x: f0.p[1][0] / 100, z: f0.p[1][1] / 100 })) {
+      collisionPause = 0.5;
+    }
+  }
 }
 
 $('simShot').addEventListener('click', startSim);
@@ -1504,6 +1546,7 @@ renderer.setAnimationLoop(now => {
   controls.update();
   updateOutline();
   updateTriLabel();
+  updatePocketLabels();
   renderer.render(scene, camera);
 });
 </script>
