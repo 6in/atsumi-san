@@ -485,11 +485,72 @@ const gridHalf = makeGrid(16, 8, true, gridMats.half);
 
 // ---------- balls ----------
 const ballGeo = new THREE.SphereGeometry(R, 64, 32);
-const obBall = new THREE.Mesh(ballGeo, new THREE.MeshStandardMaterial({ color: 0xf5c400, roughness: 0.25, metalness: 0.05 }));
+
+// 回転が見えるよう球面に模様を描く。SphereGeometry の UV（正距円筒）の各画素を球面上の方向に戻し、
+// 円形マーク（中心方向と角半径）の内側を塗るので極付近でも歪まない。text はマーク面に正対して描く。
+function makeBallTexture(base, marks) {
+  const W = 1024, H = 512;
+  const cv = document.createElement('canvas');
+  cv.width = W; cv.height = H;
+  const ctx = cv.getContext('2d');
+  const img = ctx.createImageData(W, H);
+  const rgb = c => [(c >> 16) & 255, (c >> 8) & 255, c & 255];
+  const TS = 128;
+  const prepared = marks.map(m => {
+    const c = new THREE.Vector3(...m.dir).normalize();
+    const e2 = Math.abs(c.y) > 0.9 ? new THREE.Vector3(0, 0, 1) : new THREE.Vector3(0, 1, 0);
+    e2.addScaledVector(c, -e2.dot(c)).normalize();
+    const e1 = new THREE.Vector3().crossVectors(e2, c);
+    let glyph = null;
+    if (m.text) {
+      const tc = document.createElement('canvas');
+      tc.width = tc.height = TS;
+      const t = tc.getContext('2d');
+      t.fillStyle = '#000';
+      t.font = `bold ${TS * 0.8}px system-ui, sans-serif`;
+      t.textAlign = 'center'; t.textBaseline = 'middle';
+      t.fillText(m.text, TS / 2, TS * 0.54);
+      glyph = t.getImageData(0, 0, TS, TS).data;
+    }
+    return { c, e1, e2, cosR: Math.cos(m.radius), tanR: Math.tan(m.radius), col: rgb(m.color), glyph };
+  });
+  const baseCol = rgb(base), d = new THREE.Vector3();
+  for (let py = 0; py < H; py++) {
+    const th = ((py + 0.5) / H) * Math.PI;
+    for (let px = 0; px < W; px++) {
+      const ph = ((px + 0.5) / W) * Math.PI * 2;
+      d.set(-Math.cos(ph) * Math.sin(th), Math.cos(th), Math.sin(ph) * Math.sin(th));
+      let col = baseCol;
+      for (const m of prepared) {
+        const cz = d.dot(m.c);
+        if (cz < m.cosR) continue;
+        col = m.col;
+        if (m.glyph) {
+          const u = d.dot(m.e1) / cz / m.tanR, v = d.dot(m.e2) / cz / m.tanR;
+          const gx = Math.floor((u * 0.5 + 0.5) * TS), gy = Math.floor((0.5 - v * 0.5) * TS);
+          if (gx >= 0 && gx < TS && gy >= 0 && gy < TS && m.glyph[(gy * TS + gx) * 4 + 3] > 128) col = [20, 20, 20];
+        }
+      }
+      const i = (py * W + px) * 4;
+      img.data[i] = col[0]; img.data[i + 1] = col[1]; img.data[i + 2] = col[2]; img.data[i + 3] = 255;
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+  const tex = new THREE.CanvasTexture(cv);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = 4;
+  return tex;
+}
+const ballMat = map => new THREE.MeshStandardMaterial({ map, roughness: 0.25, metalness: 0.05 });
+const CUE_DOTS = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]]
+  .map(dir => ({ dir, radius: 0.16, color: 0xd02828 }));
+const OB_MARKS = [[0, 0, 1], [0, 0, -1]].map(dir => ({ dir, radius: 0.38, color: 0xffffff, text: '1' }));
+
+const obBall = new THREE.Mesh(ballGeo, ballMat(makeBallTexture(0xf5c400, OB_MARKS)));
 obBall.castShadow = true;
 scene.add(obBall);
 
-const cueBall = new THREE.Mesh(ballGeo, new THREE.MeshStandardMaterial({ color: 0xf7f5ec, roughness: 0.25, metalness: 0.05 }));
+const cueBall = new THREE.Mesh(ballGeo, ballMat(makeBallTexture(0xf7f5ec, CUE_DOTS)));
 cueBall.castShadow = true;
 scene.add(cueBall);
 
@@ -1508,11 +1569,21 @@ function runSimulation() {
   const balls = [cb, ob];
   const frames = [];
   const events = { firstHit: null, cushions: [0, 0], pocket: [null, null] };
-  const snap = t => frames.push({ t, p: balls.map(b => [b.x * 100, b.z * 100, b.pocketed]) });
+  // 姿勢: ワールド軸の角速度 ω を毎ステップ積分（q ← exp(ω dt) · q）
+  const quats = balls.map(() => new THREE.Quaternion());
+  const dq = new THREE.Quaternion(), axis = new THREE.Vector3();
+  const snap = t => frames.push({ t, p: balls.map((b, i) => [b.x * 100, b.z * 100, b.pocketed, quats[i].clone()]) });
   let t = 0, step = 0;
   snap(0);
   while (t < SIM.maxT) {
     for (const b of balls) stepCloth(b, SIM.dt);
+    balls.forEach((b, i) => {
+      if (b.pocketed) return;
+      const w = Math.hypot(b.wx, b.wy, b.wz);
+      if (w < 1e-9) return;
+      dq.setFromAxisAngle(axis.set(b.wx / w, b.wy / w, b.wz / w), w * SIM.dt);
+      quats[i].premultiply(dq);
+    });
     if (collideBalls(cb, ob) && events.firstHit === null) events.firstHit = t;
     balls.forEach((b, i) => {
       const r = handleRails(b);
@@ -1539,6 +1610,8 @@ function stopSim() {
   sim.trails.forEach(l => { scene.remove(l); l.geometry.dispose(); });
   sim = null;
   cueBall.visible = obBall.visible = true;
+  cueBall.quaternion.identity();
+  obBall.quaternion.identity();
 }
 
 function startSim() {
@@ -1621,6 +1694,7 @@ function tickSim(now) {
     const a = f0.p[i], b = f1.p[i];
     mesh.visible = !a[2];
     mesh.position.set(a[0] + (b[0] - a[0]) * k, R, a[1] + (b[1] - a[1]) * k);
+    mesh.quaternion.slerpQuaternions(a[3], b[3], k);
   });
   sim.trails.forEach(l => { l.geometry.instanceCount = lo; });
 }
