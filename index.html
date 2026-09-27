@@ -110,8 +110,6 @@
 
     <section>
       <h2>キューボール</h2>
-      <div class="row"><label for="cbX">手球 X</label><input id="cbX" type="range" min="-124" max="124" step="0.5" value="-50"><output id="cbXv"></output></div>
-      <div class="row"><label for="cbZ">手球 Y</label><input id="cbZ" type="range" min="-60" max="60" step="0.5" value="20"><output id="cbZv"></output></div>
       <div class="row"><label class="check"><input id="cbLine" type="checkbox" checked>手球→ゴーストのライン</label></div>
       <div class="row"><label class="check"><input id="cpLine" type="checkbox">接点ガイドライン（手球の接点→的球との接点）</label></div>
       <div class="row"><label class="check"><input id="thickOn" type="checkbox">厚みで手球を縦割り（縁〜接点ラインの幅×2）</label></div>
@@ -824,8 +822,6 @@ function updateScene() {
 
   ui.obXv.value = state.ob.x.toFixed(1);
   ui.obZv.value = state.ob.z.toFixed(1);
-  ui.cbXv.value = state.cb.x.toFixed(1);
-  ui.cbZv.value = state.cb.z.toFixed(1);
   ui.angv.value = state.angle.toFixed(1) + '°';
   const f = state.throwFollow, sd = state.throwSide;
   $('tFollowv').value = f === 0 ? 'ストップ' : (f > 0 ? '押し' : '引き') + Math.abs(f);
@@ -1098,14 +1094,12 @@ const $ = id => document.getElementById(id);
 const ui = {
   obX: $('obX'), obZ: $('obZ'), obXv: $('obXv'), obZv: $('obZv'),
   aim: $('aim'), ang: $('ang'), angv: $('angv'),
-  cbX: $('cbX'), cbZ: $('cbZ'), cbXv: $('cbXv'), cbZv: $('cbZv'), cutInfo: $('cutInfo'),
+  cutInfo: $('cutInfo'),
   triInfo: $('triInfo'), triLabel: $('triLabel'), tanInfo: $('tanInfo'), throwInfo: $('throwInfo'), simInfo: $('simInfo'),
 };
 
 ui.obX.addEventListener('input', () => { state.ob.x = +ui.obX.value; updateScene(); });
 ui.obZ.addEventListener('input', () => { state.ob.z = +ui.obZ.value; updateScene(); });
-ui.cbX.addEventListener('input', () => { state.cb.x = +ui.cbX.value; updateScene(); });
-ui.cbZ.addEventListener('input', () => { state.cb.z = +ui.cbZ.value; updateScene(); });
 $('aimCushion').addEventListener('change', e => { state.aimCushion = e.target.checked; updateScene(); });
 $('cbLine').addEventListener('change', e => { state.cbLine = e.target.checked; updateScene(); });
 $('cpLine').addEventListener('change', e => { state.cpLine = e.target.checked; updateScene(); });
@@ -1137,23 +1131,19 @@ document.querySelectorAll('input[name=aheight]').forEach(el =>
 document.querySelectorAll('input[name=grid]').forEach(el =>
   el.addEventListener('change', () => { state.grid = el.value; updateScene(); }));
 $('viewBehind').addEventListener('click', () => {
-  state.cb.x = +ui.cbX.value; state.cb.z = +ui.cbZ.value;
   state.ob.x = +ui.obX.value; state.ob.z = +ui.obZ.value;
   setView('behind');
 });
 $('viewCue').addEventListener('click', () => {
-  state.cb.x = +ui.cbX.value; state.cb.z = +ui.cbZ.value;
   state.ob.x = +ui.obX.value; state.ob.z = +ui.obZ.value;
   setView('cue');
 });
 controls.addEventListener('change', () => scheduleAutosave());
 $('viewTop').addEventListener('click', () => {
-  state.cb.x = +ui.cbX.value; state.cb.z = +ui.cbZ.value;
   state.ob.x = +ui.obX.value; state.ob.z = +ui.obZ.value;
   setView('top');
 });
 $('viewSide').addEventListener('click', () => {
-  state.cb.x = +ui.cbX.value; state.cb.z = +ui.cbZ.value;
   state.ob.x = +ui.obX.value; state.ob.z = +ui.obZ.value;
   setView('side');
 });
@@ -1237,7 +1227,7 @@ function applySnapshot(o) {
 // state → フォーム
 function syncUI() {
   ui.obX.value = state.ob.x; ui.obZ.value = state.ob.z;
-  ui.cbX.value = state.cb.x; ui.cbZ.value = state.cb.z;
+ 
   ui.aim.value = state.aim; ui.ang.value = state.angle;
   $('cbLine').checked = state.cbLine;
   $('cpLine').checked = state.cpLine;
