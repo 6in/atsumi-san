@@ -19,7 +19,7 @@
   #view { position: fixed; inset: 0; touch-action: none; }
   #view canvas { display: block; }
   #panel {
-    position: fixed; top: 12px; right: 12px; width: 290px; max-height: calc(100% - 24px);
+    position: fixed; top: 12px; right: 12px; width: 320px; max-height: calc(100% - 24px);
     overflow-y: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
     padding: 10px 14px 14px; backdrop-filter: blur(6px);
   }
@@ -35,6 +35,9 @@
   .row { display: flex; align-items: center; gap: 8px; margin: 6px 0; }
   .row > label:first-child:not(.check) { flex: 0 0 64px; color: var(--muted); }
   .row input[type=range] { flex: 1; min-width: 0; accent-color: var(--accent); }
+  .row.tight { gap: 4px; }
+  .row.tight output { flex-basis: 58px; }
+  .row button.step { flex: 0 0 26px; padding: 3px 0; touch-action: manipulation; user-select: none; }
   .row output { flex: 0 0 60px; text-align: right; font-variant-numeric: tabular-nums; }
   .row select { flex: 1; background: #2a2e33; color: var(--fg); border: 1px solid var(--line); border-radius: 6px; padding: 4px; }
   .seg { flex: 1; display: flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
@@ -103,7 +106,7 @@
         </select>
       </div>
       <div class="row"><label class="check"><input id="aimCushion" type="checkbox" checked>クッションを考慮して狙う</label></div>
-      <div class="row"><label for="ang">角度</label><input id="ang" type="range" min="0" max="359.5" step="0.5" value="0"><output id="angv"></output></div>
+      <div class="row tight"><label for="ang">角度</label><button class="step" id="angDec" type="button" aria-label="0.01°減らす">−</button><input id="ang" type="range" min="0" max="359.99" step="0.01" value="0"><button class="step" id="angInc" type="button" aria-label="0.01°増やす">＋</button><output id="angv"></output></div>
     </section>
 
     <section>
@@ -835,7 +838,7 @@ function updateScene() {
   gridPoint.visible = state.grid !== 'off';
   gridHalf.visible = state.grid === 'half';
 
-  ui.angv.value = state.angle.toFixed(1) + '°';
+  ui.angv.value = state.angle.toFixed(2) + '°';
   const f = state.throwFollow, sd = state.throwSide;
   $('tFollowv').value = f === 0 ? 'ストップ' : (f > 0 ? '押し' : '引き') + Math.abs(f);
   $('tSidev').value = sd === 0 ? 'なし' : (sd > 0 ? '右' : '左') + Math.abs(sd);
@@ -1122,12 +1125,30 @@ document.querySelectorAll('input[name=tspeed]').forEach(el =>
 $('tFollow').addEventListener('input', e => { state.throwFollow = +e.target.value; updateScene(); });
 $('tSide').addEventListener('input', e => { state.throwSide = +e.target.value; updateScene(); });
 ui.aim.addEventListener('change', () => { state.aim = ui.aim.value; updateScene(); });
-ui.ang.addEventListener('input', () => {
+function setManualAngle(deg) {
   state.aim = 'manual';
   ui.aim.value = 'manual';
-  state.angle = +ui.ang.value;
+  state.angle = Math.round((((deg % 360) + 360) % 360) * 100) / 100 % 360;
+  ui.ang.value = state.angle;
   updateScene();
-});
+}
+ui.ang.addEventListener('input', () => setManualAngle(+ui.ang.value));
+// ±0.01° 。押し続けると連続で変化
+for (const [id, delta] of [['angDec', -0.01], ['angInc', 0.01]]) {
+  const btn = $(id);
+  let timer = 0;
+  const stop = () => { clearTimeout(timer); clearInterval(timer); timer = 0; };
+  btn.addEventListener('pointerdown', e => {
+    e.preventDefault();
+    stop();
+    setManualAngle(state.angle + delta);
+    timer = setTimeout(() => { timer = setInterval(() => setManualAngle(state.angle + delta), 50); }, 400);
+  });
+  ['pointerup', 'pointerleave', 'pointercancel'].forEach(t => btn.addEventListener(t, stop));
+  btn.addEventListener('keydown', e => {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setManualAngle(state.angle + delta); }
+  });
+}
 $('transparent').addEventListener('change', e => { state.transparent = e.target.checked; updateScene(); });
 $('arrowOn').addEventListener('change', e => { state.arrowOn = e.target.checked; syncArrowUI(); updateScene(); });
 document.querySelectorAll('input[name=csize]').forEach(el =>
