@@ -100,6 +100,7 @@
           <option value="5">右下コーナー</option>
         </select>
       </div>
+      <div class="row"><label class="check"><input id="aimCushion" type="checkbox" checked>クッションを考慮して狙う</label></div>
       <div class="row"><label for="ang">角度</label><input id="ang" type="range" min="0" max="359.5" step="0.5" value="0"><output id="angv"></output></div>
     </section>
 
@@ -205,6 +206,7 @@ const RAIL_W = 14, RAIL_H = 4.4;
 const CONTACT_SIZES = [0.25, 0.45, 0.75];
 const ARROW_TOP_Y = 2 * R + 0.8;
 
+const GAP_C = 7, GAP_S = 6.5;    // クッション切り欠き: コーナーは角から、サイドは中央から
 const POCKETS = [
   [-TL / 2, -TW / 2], [0, -TW / 2 - 1.5], [TL / 2, -TW / 2],
   [-TL / 2,  TW / 2], [0,  TW / 2 + 1.5], [TL / 2,  TW / 2],
@@ -224,6 +226,7 @@ const state = {
   arrowCount: 1,
   arrowHeight: 'center',
   arrowStyle: 'line', // line | wall
+  aimCushion: true,
   grid: 'off',       // off | point | half
 };
 
@@ -287,7 +290,7 @@ function buildTable() {
   box(outerL, 18, outerW, wood, 0, -11, 0, { roughness: 0.6 });
 
   // クッション（ポケット部分は切り欠き）
-  const gapC = 7, gapS = 6.5;
+  const gapC = GAP_C, gapS = GAP_S;
   const segL = TL / 2 - gapC - gapS;
   for (const sz of [-1, 1]) {
     const z = sz * (TW / 2 + CUSHION_W / 2);
@@ -499,9 +502,46 @@ function ghostPos() {
   return state.ob.clone().addScaledVector(dirVec(), -2 * R);
 }
 
+// ポケット入口で的球の中心が通れる区間。
+// コーナー: 両端はクッションに沿って転がったボールがジョー（クッション端）の真横を通る位置。
+// サイド: クッション面の線上で、両ジョーから R 離れた区間。
+function pocketMouth(i) {
+  const [px, pz] = POCKETS[i];
+  const sz = Math.sign(pz);
+  if (px === 0) {
+    const w = GAP_S - R;
+    return [[-w, sz * TW / 2], [w, sz * TW / 2]];
+  }
+  const sx = Math.sign(px);
+  return [
+    [sx * (TL / 2 - GAP_C), sz * (TW / 2 - R)],
+    [sx * (TL / 2 - R), sz * (TW / 2 - GAP_C)],
+  ];
+}
+
+// 的球の狙い点。ポケット中心へ向かう線が入口を通れない（クッションに当たる）ときは入口の端へ寄せる
+function aimPoint(i) {
+  const [px, pz] = POCKETS[i];
+  if (!state.aimCushion) return [px, pz];
+  const [[ax, az], [bx, bz]] = pocketMouth(i);
+  const ox = state.ob.x, oz = state.ob.z;
+  const dx = px - ox, dz = pz - oz;
+  const ex = bx - ax, ez = bz - az;
+  // O + t*d = A + s*e を解いて入口線上の位置 s を求める
+  const den = dx * ez - dz * ex;
+  let sPar;
+  if (Math.abs(den) < 1e-9) {
+    sPar = 0.5;
+  } else {
+    sPar = ((ax - ox) * dz - (az - oz) * dx) / den;
+  }
+  sPar = THREE.MathUtils.clamp(sPar, 0, 1);
+  return [ax + ex * sPar, az + ez * sPar];
+}
+
 function updateScene() {
   if (state.aim !== 'manual') {
-    const [px, pz] = POCKETS[+state.aim];
+    const [px, pz] = aimPoint(+state.aim);
     let deg = THREE.MathUtils.radToDeg(Math.atan2(pz - state.ob.z, px - state.ob.x));
     state.angle = (deg + 360) % 360;
     ui.ang.value = state.angle;
@@ -771,6 +811,7 @@ ui.obX.addEventListener('input', () => { state.ob.x = +ui.obX.value; updateScene
 ui.obZ.addEventListener('input', () => { state.ob.z = +ui.obZ.value; updateScene(); });
 ui.cbX.addEventListener('input', () => { state.cb.x = +ui.cbX.value; updateScene(); });
 ui.cbZ.addEventListener('input', () => { state.cb.z = +ui.cbZ.value; updateScene(); });
+$('aimCushion').addEventListener('change', e => { state.aimCushion = e.target.checked; updateScene(); });
 $('cbLine').addEventListener('change', e => { state.cbLine = e.target.checked; updateScene(); });
 $('triOn').addEventListener('change', e => { state.triOn = e.target.checked; updateScene(); });
 $('tanOn').addEventListener('change', e => { state.tanOn = e.target.checked; updateScene(); });
@@ -844,7 +885,7 @@ container.addEventListener('pointerup', endDrag);
 container.addEventListener('pointercancel', endDrag);
 
 // ---------- persistence (Dexie / IndexedDB) ----------
-const SNAPSHOT_KEYS = ['aim', 'angle', 'transparent', 'contactSize', 'arrowOn', 'arrowCount', 'arrowHeight', 'arrowStyle', 'grid', 'cbLine', 'triOn', 'tanOn'];
+const SNAPSHOT_KEYS = ['aim', 'angle', 'transparent', 'contactSize', 'arrowOn', 'arrowCount', 'arrowHeight', 'arrowStyle', 'aimCushion', 'grid', 'cbLine', 'triOn', 'tanOn'];
 
 function snapshot() {
   const o = { ob: { x: state.ob.x, z: state.ob.z }, cb: { x: state.cb.x, z: state.cb.z } };
@@ -881,6 +922,7 @@ function syncUI() {
   ui.cbX.value = state.cb.x; ui.cbZ.value = state.cb.z;
   ui.aim.value = state.aim; ui.ang.value = state.angle;
   $('cbLine').checked = state.cbLine;
+  $('aimCushion').checked = state.aimCushion;
   $('triOn').checked = state.triOn;
   $('tanOn').checked = state.tanOn;
   $('transparent').checked = state.transparent;
