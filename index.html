@@ -114,6 +114,7 @@
       <div class="row"><label class="check"><input id="cbLine" type="checkbox" checked>手球→ゴーストのライン</label></div>
       <div class="row"><label class="check"><input id="cpLine" type="checkbox">接点ガイドライン（手球の接点→的球との接点）</label></div>
       <div class="row"><label class="check"><input id="thickOn" type="checkbox">厚みで手球を縦割り（縁〜接点ラインの幅×2）</label></div>
+      <div class="row"><label class="check"><input id="thickWallOn" type="checkbox">厚みの壁（縦割り面を手球〜ゴーストに通す）</label></div>
       <div class="row"><label class="check"><input id="triOn" type="checkbox">直角三角形（的球ライン延長への垂線）</label></div>
       <div class="stat" id="cutInfo"></div>
       <div class="stat" id="triInfo"></div>
@@ -269,6 +270,7 @@ const state = {
   cbLine: true,
   cpLine: false,
   thickOn: false,
+  thickWallOn: false,
   triOn: false,
   tanOn: false,
   throwOn: false,
@@ -605,6 +607,17 @@ function placeThickSplit(t, center, side, d, sign) {
 const thickCue = makeThickSplit(0x7dff6b);
 const thickGhost = makeThickSplit(0xff9f5a);
 const thickParts = [thickCue, thickGhost].flatMap(t => [t.cap, t.slice]);
+// 厚みの壁: 手球とゴーストの縦割り面は同一平面なので、その面に沿った薄い壁（+X 向き、原点が根元の下端）
+const thickWall = (() => {
+  const geo = new THREE.PlaneGeometry(1, 1);
+  geo.translate(0.5, 0.5, 0);
+  const g = new THREE.Group();
+  const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color: 0x7dff6b, transparent: true, opacity: 0.22, side: THREE.DoubleSide, depthWrite: false }));
+  m.renderOrder = 3;
+  g.add(m, new THREE.LineSegments(new THREE.EdgesGeometry(geo), new THREE.LineBasicMaterial({ color: 0x7dff6b })));
+  scene.add(g);
+  return g;
+})();
 
 // 直角三角形: G(ゴースト中心) - F(手球から的球ライン延長への垂線の足) - C(手球中心)。ラシャ面上に描く。
 const TRI_Y = 0.05, ARC_N = 32;
@@ -858,16 +871,28 @@ function updateScene() {
   const along = hasCue ? dir.dot(cue) : 0;
   const lateral = dir.clone().addScaledVector(cue, -along);
   const sinCut = lateral.length();
-  const thickVisible = state.thickOn && hasCue && along > 1e-6;
+  const canSplit = hasCue && along > 1e-6;
+  const thickVisible = state.thickOn && canSplit;
   thickParts.forEach(o => { o.visible = thickVisible; });
-  if (thickVisible) {
+  thickWall.visible = state.thickWallOn && canSplit;
+  if (canSplit) {
     // 接点側の横方向。フルヒット（横ずれ 0）は切断面が反対側の縁に来るのでどちら向きでもよい
     const side = sinCut > 1e-6 ? lateral.clone().divideScalar(sinCut) : new THREE.Vector3(-cue.z, 0, cue.x);
     // 球の中心から切断面まで: 接点側の縁 R から厚み 2R(1 − sinθ) 内側。
     // 撞く方向に沿って見ると、的球の輪郭がちょうどこの面の位置に来る
     const d = R * (2 * sinCut - 1);
-    placeThickSplit(thickCue, state.cb, side, d, 1);
-    placeThickSplit(thickGhost, gp, side, d, -1);
+    if (thickVisible) {
+      placeThickSplit(thickCue, state.cb, side, d, 1);
+      placeThickSplit(thickGhost, gp, side, d, -1);
+    }
+    if (thickWall.visible) {
+      // 手球の背面から PIERCE_TAIL 後方 〜 ゴーストボールの前端まで
+      const start = state.cb.clone().addScaledVector(side, d).addScaledVector(cue, -(R + PIERCE_TAIL));
+      const length = state.cb.distanceTo(gp) + 2 * R + PIERCE_TAIL;
+      thickWall.position.set(start.x, 0, start.z);
+      thickWall.rotation.y = -Math.atan2(cue.z, cue.x);
+      thickWall.scale.set(length, 2 * R, 1);
+    }
   }
   const cpOn = state.cpLine && hasCue;
   cpLine.visible = cpOn;
@@ -1178,6 +1203,7 @@ $('aimCushion').addEventListener('change', e => { state.aimCushion = e.target.ch
 $('cbLine').addEventListener('change', e => { state.cbLine = e.target.checked; updateScene(); });
 $('cpLine').addEventListener('change', e => { state.cpLine = e.target.checked; updateScene(); });
 $('thickOn').addEventListener('change', e => { state.thickOn = e.target.checked; updateScene(); });
+$('thickWallOn').addEventListener('change', e => { state.thickWallOn = e.target.checked; updateScene(); });
 $('triOn').addEventListener('change', e => { state.triOn = e.target.checked; updateScene(); });
 $('tanOn').addEventListener('change', e => { state.tanOn = e.target.checked; updateScene(); });
 $('throwOn').addEventListener('change', e => { state.throwOn = e.target.checked; updateScene(); });
@@ -1281,7 +1307,7 @@ container.addEventListener('pointerup', endDrag);
 container.addEventListener('pointercancel', endDrag);
 
 // ---------- persistence (Dexie / IndexedDB) ----------
-const SNAPSHOT_KEYS = ['aim', 'angle', 'transparent', 'contactSize', 'arrowOn', 'arrowCount', 'arrowHeight', 'arrowStyle', 'aimCushion', 'grid', 'cbLine', 'cpLine', 'thickOn', 'triOn', 'tanOn', 'throwOn', 'throwSpeed', 'throwFollow', 'throwSide', 'simLoop', 'simPause'];
+const SNAPSHOT_KEYS = ['aim', 'angle', 'transparent', 'contactSize', 'arrowOn', 'arrowCount', 'arrowHeight', 'arrowStyle', 'aimCushion', 'grid', 'cbLine', 'cpLine', 'thickOn', 'thickWallOn', 'triOn', 'tanOn', 'throwOn', 'throwSpeed', 'throwFollow', 'throwSide', 'simLoop', 'simPause'];
 
 function snapshot() {
   const o = { ob: { x: state.ob.x, z: state.ob.z }, cb: { x: state.cb.x, z: state.cb.z } };
@@ -1318,6 +1344,7 @@ function syncUI() {
   $('cbLine').checked = state.cbLine;
   $('cpLine').checked = state.cpLine;
   $('thickOn').checked = state.thickOn;
+  $('thickWallOn').checked = state.thickWallOn;
   $('aimCushion').checked = state.aimCushion;
   $('triOn').checked = state.triOn;
   $('tanOn').checked = state.tanOn;
@@ -1619,7 +1646,7 @@ function startSim() {
   const res = runSimulation();
   if (!res) { ui.simInfo.textContent = '手球とゴーストボールが重なっていて撞けません'; return; }
   // 補助表示を隠す
-  [ghost, ghostCenter, outline, groundContact, groundRing, ballContact, arrowGroup, cbLine, cbBackDot, cpLine, ...cpDots, ...thickParts, triLine, triRight, triArc,
+  [ghost, ghostCenter, outline, groundContact, groundRing, ballContact, arrowGroup, cbLine, cbBackDot, cpLine, ...cpDots, ...thickParts, thickWall, triLine, triRight, triArc,
    tanLine, tanEnd, throwLine, compGhost, compAimLine].forEach(o => { o.visible = false; });
   triLabelVisible = false;
   const trails = [0, 1].map(i => {
