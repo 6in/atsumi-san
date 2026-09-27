@@ -702,6 +702,7 @@ function setView(kind) {
     camera.position.y = 22;
   }
   controls.update();
+  scheduleAutosave();
 }
 
 // ---------- UI ----------
@@ -738,6 +739,7 @@ document.querySelectorAll('input[name=aheight]').forEach(el =>
 document.querySelectorAll('input[name=grid]').forEach(el =>
   el.addEventListener('change', () => { state.grid = el.value; updateScene(); }));
 $('viewBehind').addEventListener('click', () => setView('behind'));
+controls.addEventListener('change', () => scheduleAutosave());
 $('viewTop').addEventListener('click', () => setView('top'));
 $('viewSide').addEventListener('click', () => setView('side'));
 
@@ -791,7 +793,19 @@ const SNAPSHOT_KEYS = ['aim', 'angle', 'transparent', 'contactSize', 'arrowOn', 
 function snapshot() {
   const o = { ob: { x: state.ob.x, z: state.ob.z }, cb: { x: state.cb.x, z: state.cb.z } };
   for (const k of SNAPSHOT_KEYS) o[k] = state[k];
+  o.view = { pos: camera.position.toArray(), target: controls.target.toArray() };
   return o;
+}
+
+// 保存された視点を復元。視点情報のない旧データは「ゴースト後方」
+function applyView(o) {
+  if (o?.view?.pos && o.view.target) {
+    controls.target.fromArray(o.view.target);
+    camera.position.fromArray(o.view.pos);
+    controls.update();
+  } else {
+    setView('behind');
+  }
 }
 
 function applySnapshot(o) {
@@ -839,10 +853,11 @@ try {
 
 let autosaveTimer = 0;
 let restoring = true;   // 起動時の復元が終わるまで自動保存しない
+// 視点のダンピング中は change が毎フレーム来るので、debounce ではなく間引き（発火時点の状態を保存）
 function scheduleAutosave() {
-  if (!db || restoring) return;
-  clearTimeout(autosaveTimer);
+  if (!db || restoring || autosaveTimer) return;
   autosaveTimer = setTimeout(() => {
+    autosaveTimer = 0;
     db.kv.put({ key: 'last', value: snapshot() }).catch(() => {});
   }, 400);
 }
@@ -870,8 +885,8 @@ async function renderSaveList() {
     load.textContent = '読込';
     load.addEventListener('click', () => {
       applySnapshot(row.data);
+      applyView(row.data);
       $('saveName').value = row.name;
-      setView('behind');
       $('saveMsg').textContent = `「${row.name}」を読み込みました`;
     });
     const del = document.createElement('button');
@@ -913,7 +928,7 @@ async function restoreLast() {
   if (!db) return;
   try {
     const last = await db.kv.get('last');
-    if (last) { applySnapshot(last.value); setView('behind'); }
+    if (last) { applySnapshot(last.value); applyView(last.value); }
     await renderSaveList();
   } catch (err) {
     $('saveMsg').textContent = '保存データを読めません: ' + err.message;
