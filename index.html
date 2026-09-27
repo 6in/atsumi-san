@@ -31,7 +31,7 @@
   .row { display: flex; align-items: center; gap: 8px; margin: 6px 0; }
   .row > label:first-child:not(.check) { flex: 0 0 64px; color: var(--muted); }
   .row input[type=range] { flex: 1; min-width: 0; accent-color: var(--accent); }
-  .row output { flex: 0 0 44px; text-align: right; font-variant-numeric: tabular-nums; }
+  .row output { flex: 0 0 60px; text-align: right; font-variant-numeric: tabular-nums; }
   .row select { flex: 1; background: #2a2e33; color: var(--fg); border: 1px solid var(--line); border-radius: 6px; padding: 4px; }
   .seg { flex: 1; display: flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
   .seg input { display: none; }
@@ -115,6 +115,25 @@
       <div class="row"><label class="check"><input id="tanOn" type="checkbox">タンジェントライン（ゴースト中心・クッション反射付き）</label></div>
       <div class="stat" id="tanInfo"></div>
       <div class="stat">ボールは台上でドラッグしても動かせます</div>
+    </section>
+
+    <section>
+      <h2>スロウ</h2>
+      <div class="row"><label class="check"><input id="throwOn" type="checkbox">スロウを表示（実際の的球ライン・補正ゴースト）</label></div>
+      <div class="row"><label>手球の速さ</label>
+        <div class="seg">
+          <input type="radio" name="tspeed" id="ts0" value="0"><label for="ts0">遅い</label>
+          <input type="radio" name="tspeed" id="ts1" value="1" checked><label for="ts1">中</label>
+          <input type="radio" name="tspeed" id="ts2" value="2"><label for="ts2">速い</label>
+        </div>
+      </div>
+      <div class="row"><label for="tFollow">縦回転</label><input id="tFollow" type="range" min="-1" max="1" step="0.25" value="0"><output id="tFollowv"></output></div>
+      <div class="row"><label for="tSide">横回転</label><input id="tSide" type="range" min="-1" max="1" step="0.25" value="0"><output id="tSidev"></output></div>
+      <div class="stat" id="throwInfo"></div>
+      <div class="legend">
+        <span><span class="dot" style="background:#ff5a5a"></span>実際の的球ライン</span>
+        <span><span class="dot" style="background:#55ccff"></span>補正ゴースト</span>
+      </div>
     </section>
 
     <section>
@@ -218,6 +237,10 @@ const state = {
   cbLine: true,
   triOn: false,
   tanOn: false,
+  throwOn: false,
+  throwSpeed: 1,     // 0: 遅い 1: 中 2: 速い
+  throwFollow: 0,    // -1 引き … 0 ストップ … +1 押し（自然転がり）
+  throwSide: 0,      // -1 左ひねり … +1 右ひねり（撞点 R/2 相当）
   angle: 0,          // 的球の進行方向（度）。XZ 平面で +X から +Z 方向へ
   aim: '2',
   transparent: false,
@@ -407,6 +430,15 @@ const tanLine = makeLine(TAN_MAX_PTS, tanMat);
 const tanEnd = new THREE.Mesh(new THREE.SphereGeometry(0.5, 16, 12), new THREE.MeshBasicMaterial({ color: 0xff6bd6 }));
 tanEnd.visible = false;
 scene.add(tanEnd);
+// スロウ表示
+const throwLineMat = new LineMaterial({ color: 0xff5a5a, linewidth: 2.5 });
+const throwLine = makeLine(2, throwLineMat);
+const compGhostMat = new THREE.MeshStandardMaterial({ color: 0x55ccff, roughness: 0.35, transparent: true, opacity: 0.4, depthWrite: false });
+const compGhost = new THREE.Mesh(ballGeo, compGhostMat);
+compGhost.renderOrder = 2;
+compGhost.visible = false;
+scene.add(compGhost);
+const compAimLine = makeLine(2, new LineMaterial({ color: 0x55ccff, linewidth: 1.5, dashed: true, dashSize: 1.5, gapSize: 1 }));
 const triLabelPos = new THREE.Vector3();
 let triLabelVisible = false;
 
@@ -597,6 +629,7 @@ function updateScene() {
   }
   updateTriangle(gp, dir);
   updateTangent(gp, dir);
+  updateThrow(gp, dir);
 
   const toGhost = gp.clone().sub(state.cb);
   const dist = toGhost.length();
@@ -617,6 +650,9 @@ function updateScene() {
   ui.cbXv.value = state.cb.x.toFixed(1);
   ui.cbZv.value = state.cb.z.toFixed(1);
   ui.angv.value = state.angle.toFixed(1) + '°';
+  const f = state.throwFollow, sd = state.throwSide;
+  $('tFollowv').value = f === 0 ? 'ストップ' : (f > 0 ? '押し' : '引き') + Math.abs(f);
+  $('tSidev').value = sd === 0 ? 'なし' : (sd > 0 ? '右' : '左') + Math.abs(sd);
 
   scheduleAutosave();
 }
@@ -739,6 +775,88 @@ function updateTangent(gp, dir) {
   ui.tanInfo.innerHTML = `タンジェント長 <b>${total.toFixed(1)}cm</b>（${state.aim === 'manual' ? '的球〜クッション' : '的球〜ポケット'}）　反射 <b>${bounces}</b> 回`;
 }
 
+// ---------- throw (Alciatore TP A.14) ----------
+// ボール間摩擦: μ(v_rel) = a + b·exp(−c·v_rel)  [m/s]
+// スロウ角: θ = atan( min(μ·v·cosφ / v_rel, 1/7) · |接線方向の滑り| / (v·cosφ) )
+const THROW_SPEEDS = [0.5, 1.5, 3.5];          // m/s
+const R_M = R / 100;                           // ボール半径 [m]
+const muBall = vr => 9.951e-3 + 0.108 * Math.exp(-1.088 * vr);
+
+// 的球の進行方向 n（ゴースト→的球）と手球の進入方向 u に対するスロウ後の的球方向を返す
+function throwResult(n, u) {
+  const v = THROW_SPEEDS[state.throwSpeed];
+  const cosPhi = THREE.MathUtils.clamp(u.x * n.x + u.z * n.z, -1, 1);
+  if (cosPhi <= 1e-3) return null;               // 90°以上のカットは当たらない
+  const tx = -n.z, tz = n.x;                      // 接線方向（n に直交する水平単位ベクトル）
+  // 横回転: 右ひねり（進行方向の右側を撞く）はトルク r×F が +y → 上から見て反時計回り（ω_y > 0）。
+  // 撞点 b=R/2 のとき ω = 5/2·v·b/R² = 1.25·v/R
+  const wy = state.throwSide * 1.25 * v / R_M;
+  // 接点（手球表面の n 方向）の回転による速度 ω × R·n = ω_y·R·(n_z, 0, −n_x)
+  const spinT = wy * R_M * (n.z * tx - n.x * tz);
+  const slideT = v * (u.x * tx + u.z * tz) + spinT;   // 接線方向の滑り（符号付き）
+  const wx = state.throwFollow * v / R_M;             // 縦回転（自然転がりで ω = v/R）
+  const vRel = Math.hypot(slideT, R_M * wx * cosPhi);
+  if (vRel < 1e-9) return { theta: 0, dx: n.x, dz: n.z, phi: Math.acos(cosPhi) };
+  const k = Math.min(muBall(vRel) * v * cosPhi / vRel, 1 / 7);
+  const theta = Math.atan(k * Math.abs(slideT) / (v * cosPhi));
+  const sgn = Math.sign(slideT);
+  // 的球は手球表面が滑る向きへ引きずられる
+  const dx = n.x * Math.cos(theta) + sgn * tx * Math.sin(theta);
+  const dz = n.z * Math.cos(theta) + sgn * tz * Math.sin(theta);
+  return { theta: sgn * theta, dx, dz, phi: Math.acos(cosPhi) };
+}
+
+function approachDir(ghostX, ghostZ) {
+  const u = new THREE.Vector3(ghostX - state.cb.x, 0, ghostZ - state.cb.z);
+  return u.lengthSq() < 1e-9 ? null : u.normalize();
+}
+
+function updateThrow(gp, dir) {
+  throwLine.visible = compGhost.visible = compAimLine.visible = false;
+  ui.throwInfo.textContent = '';
+  if (!state.throwOn) return;
+
+  const u = approachDir(gp.x, gp.z);
+  const r = u && gp.distanceTo(state.cb) >= 2 * R ? throwResult(dir, u) : null;
+  if (!r) { ui.throwInfo.textContent = 'この配置では手球が的球に当たりません'; return; }
+
+  const travel = obTravel(dir);
+  throwLine.geometry.setPositions([state.ob.x, R, state.ob.z, state.ob.x + r.dx * travel, R, state.ob.z + r.dz * travel]);
+  throwLine.visible = true;
+
+  // 補正ゴースト: スロウ後の方向が狙いの方向 dir に一致する n を反復で求める
+  const aimA = Math.atan2(dir.z, dir.x);
+  let a = aimA, comp = null;
+  for (let i = 0; i < 20; i++) {
+    const n = new THREE.Vector3(Math.cos(a), 0, Math.sin(a));
+    const gx = state.ob.x - 2 * R * n.x, gz = state.ob.z - 2 * R * n.z;
+    const uu = approachDir(gx, gz);
+    const rr = uu ? throwResult(n, uu) : null;
+    if (!rr) { comp = null; break; }
+    const err = Math.atan2(rr.dz, rr.dx) - aimA;
+    const e = Math.atan2(Math.sin(err), Math.cos(err));
+    comp = { a, gx, gz };
+    if (Math.abs(e) < 1e-6) break;
+    a -= e;
+  }
+
+  const thetaDeg = THREE.MathUtils.radToDeg(Math.abs(r.theta));
+  let html = `スロウ <b>${thetaDeg.toFixed(2)}°</b>　${state.aim === 'manual' ? 'クッション' : 'ポケット'}位置でのずれ <b>${(travel * Math.tan(Math.abs(r.theta))).toFixed(1)}cm</b>`;
+  if (comp) {
+    compGhost.position.set(comp.gx, R, comp.gz);
+    compGhost.visible = true;
+    compAimLine.geometry.setPositions([state.cb.x, R, state.cb.z, comp.gx, R, comp.gz]);
+    compAimLine.computeLineDistances();
+    compAimLine.visible = true;
+    const d = THREE.MathUtils.radToDeg(Math.atan2(Math.sin(comp.a - aimA), Math.cos(comp.a - aimA)));
+    const shift = 2 * R * Math.abs(Math.sin(comp.a - aimA)) * 10;   // mm
+    html += `<br>補正: 当て方向を <b>${Math.abs(d).toFixed(2)}°</b>（ゴースト位置で <b>${shift.toFixed(1)}mm</b>）ずらす`;
+  } else {
+    html += '<br>補正ゴースト: 解なし';
+  }
+  ui.throwInfo.innerHTML = html;
+}
+
 // 角度ラベルを画面座標に追従させる
 const projV = new THREE.Vector3();
 function updateTriLabel() {
@@ -804,7 +922,7 @@ const ui = {
   obX: $('obX'), obZ: $('obZ'), obXv: $('obXv'), obZv: $('obZv'),
   aim: $('aim'), ang: $('ang'), angv: $('angv'),
   cbX: $('cbX'), cbZ: $('cbZ'), cbXv: $('cbXv'), cbZv: $('cbZv'), cutInfo: $('cutInfo'),
-  triInfo: $('triInfo'), triLabel: $('triLabel'), tanInfo: $('tanInfo'),
+  triInfo: $('triInfo'), triLabel: $('triLabel'), tanInfo: $('tanInfo'), throwInfo: $('throwInfo'),
 };
 
 ui.obX.addEventListener('input', () => { state.ob.x = +ui.obX.value; updateScene(); });
@@ -815,6 +933,11 @@ $('aimCushion').addEventListener('change', e => { state.aimCushion = e.target.ch
 $('cbLine').addEventListener('change', e => { state.cbLine = e.target.checked; updateScene(); });
 $('triOn').addEventListener('change', e => { state.triOn = e.target.checked; updateScene(); });
 $('tanOn').addEventListener('change', e => { state.tanOn = e.target.checked; updateScene(); });
+$('throwOn').addEventListener('change', e => { state.throwOn = e.target.checked; updateScene(); });
+document.querySelectorAll('input[name=tspeed]').forEach(el =>
+  el.addEventListener('change', () => { state.throwSpeed = +el.value; updateScene(); }));
+$('tFollow').addEventListener('input', e => { state.throwFollow = +e.target.value; updateScene(); });
+$('tSide').addEventListener('input', e => { state.throwSide = +e.target.value; updateScene(); });
 ui.aim.addEventListener('change', () => { state.aim = ui.aim.value; updateScene(); });
 ui.ang.addEventListener('input', () => {
   state.aim = 'manual';
@@ -885,7 +1008,7 @@ container.addEventListener('pointerup', endDrag);
 container.addEventListener('pointercancel', endDrag);
 
 // ---------- persistence (Dexie / IndexedDB) ----------
-const SNAPSHOT_KEYS = ['aim', 'angle', 'transparent', 'contactSize', 'arrowOn', 'arrowCount', 'arrowHeight', 'arrowStyle', 'aimCushion', 'grid', 'cbLine', 'triOn', 'tanOn'];
+const SNAPSHOT_KEYS = ['aim', 'angle', 'transparent', 'contactSize', 'arrowOn', 'arrowCount', 'arrowHeight', 'arrowStyle', 'aimCushion', 'grid', 'cbLine', 'triOn', 'tanOn', 'throwOn', 'throwSpeed', 'throwFollow', 'throwSide'];
 
 function snapshot() {
   const o = { ob: { x: state.ob.x, z: state.ob.z }, cb: { x: state.cb.x, z: state.cb.z } };
@@ -925,6 +1048,9 @@ function syncUI() {
   $('aimCushion').checked = state.aimCushion;
   $('triOn').checked = state.triOn;
   $('tanOn').checked = state.tanOn;
+  $('throwOn').checked = state.throwOn;
+  $('tFollow').value = state.throwFollow;
+  $('tSide').value = state.throwSide;
   $('transparent').checked = state.transparent;
   $('arrowOn').checked = state.arrowOn;
   const radio = (name, val) => {
@@ -935,6 +1061,7 @@ function syncUI() {
   radio('acount', state.arrowCount);
   radio('aheight', state.arrowHeight);
   radio('astyle', state.arrowStyle);
+  radio('tspeed', state.throwSpeed);
   radio('grid', state.grid);
 }
 
@@ -1057,6 +1184,8 @@ function resize() {
   triMat.resolution.set(w, h);
   triThinMat.resolution.set(w, h);
   tanMat.resolution.set(w, h);
+  throwLineMat.resolution.set(w, h);
+  compAimLine.material.resolution.set(w, h);
 }
 window.addEventListener('resize', resize);
 
