@@ -112,6 +112,8 @@
       <div class="row"><label class="check"><input id="triOn" type="checkbox">直角三角形（的球ライン延長への垂線）</label></div>
       <div class="stat" id="cutInfo"></div>
       <div class="stat" id="triInfo"></div>
+      <div class="row"><label class="check"><input id="tanOn" type="checkbox">タンジェントライン（クッション反射付き）</label></div>
+      <div class="stat" id="tanInfo"></div>
       <div class="stat">ボールは台上でドラッグしても動かせます</div>
     </section>
 
@@ -207,6 +209,7 @@ const state = {
   cb: new THREE.Vector3(-50, R, 20),
   cbLine: true,
   triOn: false,
+  tanOn: false,
   angle: 0,          // 的球の進行方向（度）。XZ 平面で +X から +Z 方向へ
   aim: '2',
   transparent: false,
@@ -378,6 +381,12 @@ function makeLine(n, mat) {
 const triLine = makeLine(4, triMat);
 const triRight = makeLine(3, triThinMat);
 const triArc = makeLine(ARC_N + 1, triThinMat);
+const TAN_MAX_PTS = 16;
+const tanMat = new LineMaterial({ color: 0xff6bd6, linewidth: 2 });
+const tanLine = makeLine(TAN_MAX_PTS, tanMat);
+const tanEnd = new THREE.Mesh(new THREE.SphereGeometry(0.5, 16, 12), new THREE.MeshBasicMaterial({ color: 0xff6bd6 }));
+tanEnd.visible = false;
+scene.add(tanEnd);
 const triLabelPos = new THREE.Vector3();
 let triLabelVisible = false;
 
@@ -508,6 +517,7 @@ function updateScene() {
     cbLine.computeLineDistances();
   }
   updateTriangle(gp, dir);
+  updateTangent(gp, dir);
 
   const toGhost = gp.clone().sub(state.cb);
   const dist = toGhost.length();
@@ -592,6 +602,62 @@ function updateTriangle(gp, dir) {
     (t > 0 ? '（手球が的球側にあり、延長線の前方で交わります）' : '');
 }
 
+// 的球の移動距離: ポケット指定時は的球〜ポケット、手動時は的球〜クッション面
+function obTravel(dir) {
+  if (state.aim !== 'manual') {
+    const [px, pz] = POCKETS[+state.aim];
+    return Math.hypot(px - state.ob.x, pz - state.ob.z);
+  }
+  return rayToCushion(state.ob.x, state.ob.z, dir.x, dir.z).t;
+}
+
+// プレイエリア（クッション面）の矩形内から (dx,dz) 方向に進んだときに当たる壁
+function rayToCushion(x, z, dx, dz) {
+  let t = Infinity, axis = null;
+  if (dx > 1e-9) { const k = (TL / 2 - x) / dx; if (k < t) { t = k; axis = 'x'; } }
+  if (dx < -1e-9) { const k = (-TL / 2 - x) / dx; if (k < t) { t = k; axis = 'x'; } }
+  if (dz > 1e-9) { const k = (TW / 2 - z) / dz; if (k < t) { t = k; axis = 'z'; } }
+  if (dz < -1e-9) { const k = (-TW / 2 - z) / dz; if (k < t) { t = k; axis = 'z'; } }
+  return { t: Math.max(0, t), axis };
+}
+
+function updateTangent(gp, dir) {
+  tanLine.visible = tanEnd.visible = false;
+  ui.tanInfo.textContent = '';
+  if (!state.tanOn) return;
+
+  const cue = new THREE.Vector3(gp.x - state.cb.x, 0, gp.z - state.cb.z);
+  if (cue.length() < 2 * R) { ui.tanInfo.textContent = 'タンジェント: 手球がゴーストボールと重なっています'; return; }
+  cue.normalize();
+  // 手球が分離していく側の接線方向
+  let tx = -dir.z, tz = dir.x;
+  const side = tx * cue.x + tz * cue.z;
+  if (Math.abs(side) < 1e-4) { ui.tanInfo.textContent = 'タンジェント: 厚み 1（真っ直ぐ）なので接線方向がありません'; return; }
+  if (side < 0) { tx = -tx; tz = -tz; }
+
+  let x = (gp.x + state.ob.x) / 2, z = (gp.z + state.ob.z) / 2;
+  let remain = obTravel(dir);
+  const total = remain;
+  const pts = [x, R, z];
+  let bounces = 0;
+  while (remain > 1e-6 && pts.length / 3 < TAN_MAX_PTS) {
+    const { t, axis } = rayToCushion(x, z, tx, tz);
+    const step = Math.min(t, remain);
+    x += tx * step; z += tz * step; remain -= step;
+    pts.push(x, R, z);
+    if (remain <= 1e-6) break;
+    if (axis === 'x') tx = -tx; else tz = -tz;
+    bounces++;
+  }
+  // 固定長の頂点バッファを末尾の点で埋める
+  while (pts.length / 3 < TAN_MAX_PTS) pts.push(x, R, z);
+  tanLine.geometry.setPositions(pts);
+  tanLine.visible = true;
+  tanEnd.position.set(x, R, z);
+  tanEnd.visible = true;
+  ui.tanInfo.innerHTML = `タンジェント長 <b>${total.toFixed(1)}cm</b>（${state.aim === 'manual' ? '的球〜クッション' : '的球〜ポケット'}）　反射 <b>${bounces}</b> 回`;
+}
+
 // 角度ラベルを画面座標に追従させる
 const projV = new THREE.Vector3();
 function updateTriLabel() {
@@ -642,7 +708,7 @@ const ui = {
   obX: $('obX'), obZ: $('obZ'), obXv: $('obXv'), obZv: $('obZv'),
   aim: $('aim'), ang: $('ang'), angv: $('angv'),
   cbX: $('cbX'), cbZ: $('cbZ'), cbXv: $('cbXv'), cbZv: $('cbZv'), cutInfo: $('cutInfo'),
-  triInfo: $('triInfo'), triLabel: $('triLabel'),
+  triInfo: $('triInfo'), triLabel: $('triLabel'), tanInfo: $('tanInfo'),
 };
 
 ui.obX.addEventListener('input', () => { state.ob.x = +ui.obX.value; updateScene(); });
@@ -651,6 +717,7 @@ ui.cbX.addEventListener('input', () => { state.cb.x = +ui.cbX.value; updateScene
 ui.cbZ.addEventListener('input', () => { state.cb.z = +ui.cbZ.value; updateScene(); });
 $('cbLine').addEventListener('change', e => { state.cbLine = e.target.checked; updateScene(); });
 $('triOn').addEventListener('change', e => { state.triOn = e.target.checked; updateScene(); });
+$('tanOn').addEventListener('change', e => { state.tanOn = e.target.checked; updateScene(); });
 ui.aim.addEventListener('change', () => { state.aim = ui.aim.value; updateScene(); });
 ui.ang.addEventListener('input', () => {
   state.aim = 'manual';
@@ -717,7 +784,7 @@ container.addEventListener('pointerup', endDrag);
 container.addEventListener('pointercancel', endDrag);
 
 // ---------- persistence (Dexie / IndexedDB) ----------
-const SNAPSHOT_KEYS = ['aim', 'angle', 'transparent', 'contactSize', 'arrowOn', 'arrowCount', 'arrowHeight', 'grid', 'cbLine', 'triOn'];
+const SNAPSHOT_KEYS = ['aim', 'angle', 'transparent', 'contactSize', 'arrowOn', 'arrowCount', 'arrowHeight', 'grid', 'cbLine', 'triOn', 'tanOn'];
 
 function snapshot() {
   const o = { ob: { x: state.ob.x, z: state.ob.z }, cb: { x: state.cb.x, z: state.cb.z } };
@@ -742,6 +809,7 @@ function syncUI() {
   ui.aim.value = state.aim; ui.ang.value = state.angle;
   $('cbLine').checked = state.cbLine;
   $('triOn').checked = state.triOn;
+  $('tanOn').checked = state.tanOn;
   $('transparent').checked = state.transparent;
   $('arrowOn').checked = state.arrowOn;
   const radio = (name, val) => {
@@ -871,6 +939,7 @@ function resize() {
   cbLineMat.resolution.set(w, h);
   triMat.resolution.set(w, h);
   triThinMat.resolution.set(w, h);
+  tanMat.resolution.set(w, h);
 }
 window.addEventListener('resize', resize);
 
