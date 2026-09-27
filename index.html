@@ -25,7 +25,9 @@
   }
   #panel h1 { font-size: 15px; margin: 0; }
   .head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-  #toggle { display: none; }
+  #toggle { padding: 4px 10px; }
+  #panel.collapsed { width: auto; }
+  #panel.collapsed .body { display: none; }
   section { border-top: 1px solid var(--line); margin-top: 10px; padding-top: 8px; }
   section > h2 { font-size: 12px; color: var(--muted); margin: 0 0 6px; font-weight: 600; letter-spacing: .04em; }
   .row { display: flex; align-items: center; gap: 8px; margin: 6px 0; }
@@ -64,8 +66,6 @@
     #panel { top: auto; bottom: 0; right: 0; left: 0; width: auto; max-height: 48%;
       border-radius: 12px 12px 0 0; padding-bottom: calc(14px + env(safe-area-inset-bottom)); }
     #panel.collapsed { max-height: none; }
-    #panel.collapsed .body { display: none; }
-    #toggle { display: inline-block; padding: 4px 10px; }
   }
 </style>
 <script src="https://cdn.jsdelivr.net/npm/dexie@4.4.6/dist/dexie.min.js"></script>
