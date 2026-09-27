@@ -56,6 +56,9 @@
   #saveList button { padding: 3px 8px; font-size: 12px; }
   #saveList .empty { color: var(--muted); font-size: 12px; }
   #saveMsg { min-height: 1em; margin: 6px 0 0; font-size: 12px; color: var(--muted); }
+  #triLabel { position: fixed; left: 0; top: 0; pointer-events: none; transform: translate(-50%, -50%);
+    background: rgba(10, 30, 40, 0.8); color: #7fdcff; border: 1px solid #4fd1ff; border-radius: 4px;
+    padding: 1px 6px; font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
   #err { position: fixed; left: 12px; bottom: 12px; color: #ff8080; }
 
   @media (max-width: 640px) {
@@ -106,7 +109,9 @@
       <div class="row"><label for="cbX">手球 X</label><input id="cbX" type="range" min="-124" max="124" step="0.5" value="-50"><output id="cbXv"></output></div>
       <div class="row"><label for="cbZ">手球 Y</label><input id="cbZ" type="range" min="-60" max="60" step="0.5" value="20"><output id="cbZv"></output></div>
       <div class="row"><label class="check"><input id="cbLine" type="checkbox" checked>手球→ゴーストのライン</label></div>
+      <div class="row"><label class="check"><input id="triOn" type="checkbox">直角三角形（的球ライン延長への垂線）</label></div>
       <div class="stat" id="cutInfo"></div>
+      <div class="stat" id="triInfo"></div>
       <div class="stat">ボールは台上でドラッグしても動かせます</div>
     </section>
 
@@ -172,6 +177,7 @@
     </section>
   </div>
 </div>
+<div id="triLabel" hidden></div>
 <div id="err"></div>
 
 <script type="module">
@@ -200,6 +206,7 @@ const state = {
   ob: new THREE.Vector3(40, R, -20),
   cb: new THREE.Vector3(-50, R, 20),
   cbLine: true,
+  triOn: false,
   angle: 0,          // 的球の進行方向（度）。XZ 平面で +X から +Z 方向へ
   aim: '2',
   transparent: false,
@@ -356,6 +363,24 @@ const cbLine = new Line2(new LineGeometry(), cbLineMat);
 cbLine.geometry.setPositions([0, 0, 0, 1, 0, 0]);
 scene.add(cbLine);
 
+// 直角三角形: G(ゴースト中心) - F(手球から的球ライン延長への垂線の足) - C(手球中心)。ラシャ面上に描く。
+const TRI_Y = 0.05, ARC_N = 32;
+const triMat = new LineMaterial({ color: 0x4fd1ff, linewidth: 2 });
+const triThinMat = new LineMaterial({ color: 0x4fd1ff, linewidth: 1.5 });
+function makeLine(n, mat) {
+  const g = new LineGeometry();
+  g.setPositions(new Array(n * 3).fill(0));
+  const l = new Line2(g, mat);
+  l.visible = false;
+  scene.add(l);
+  return l;
+}
+const triLine = makeLine(4, triMat);
+const triRight = makeLine(3, triThinMat);
+const triArc = makeLine(ARC_N + 1, triThinMat);
+const triLabelPos = new THREE.Vector3();
+let triLabelVisible = false;
+
 const ghostMat = new THREE.MeshStandardMaterial({ color: 0x9a9a9a, roughness: 0.35 });
 const ghost = new THREE.Mesh(ballGeo, ghostMat);
 ghost.castShadow = true;
@@ -482,6 +507,8 @@ function updateScene() {
     cbLine.geometry.setPositions([state.cb.x, R, state.cb.z, gp.x, R, gp.z]);
     cbLine.computeLineDistances();
   }
+  updateTriangle(gp, dir);
+
   const toGhost = gp.clone().sub(state.cb);
   const dist = toGhost.length();
   if (dist < 2 * R - 1e-6) {
@@ -503,6 +530,78 @@ function updateScene() {
   ui.angv.value = state.angle.toFixed(1) + '°';
 
   scheduleAutosave();
+}
+
+function updateTriangle(gp, dir) {
+  const on = state.triOn;
+  triLine.visible = triRight.visible = triArc.visible = on;
+  triLabelVisible = false;
+  ui.triInfo.textContent = '';
+  if (!on) return;
+
+  const G = new THREE.Vector3(gp.x, TRI_Y, gp.z);
+  const C = new THREE.Vector3(state.cb.x, TRI_Y, state.cb.z);
+  const t = C.clone().sub(G).dot(dir);
+  const F = G.clone().addScaledVector(dir, t);
+  const gf = F.clone().sub(G), gc = C.clone().sub(G), fc = C.clone().sub(F);
+  const lenGF = gf.length(), lenGC = gc.length(), lenFC = fc.length();
+
+  triLine.geometry.setPositions([G.x, G.y, G.z, F.x, F.y, F.z, C.x, C.y, C.z, G.x, G.y, G.z]);
+
+  // 直角マーク
+  const m = Math.min(2.5, lenGF * 0.4, lenFC * 0.4);
+  if (m > 0.2) {
+    const u = gf.clone().negate().normalize(), v = fc.clone().normalize();
+    const a = F.clone().addScaledVector(u, m), b = a.clone().addScaledVector(v, m), c = F.clone().addScaledVector(v, m);
+    triRight.geometry.setPositions([a.x, a.y, a.z, b.x, b.y, b.z, c.x, c.y, c.z]);
+    triRight.visible = true;
+  } else {
+    triRight.visible = false;
+  }
+
+  if (lenGF < 1e-3 || lenGC < 1e-3) {
+    triArc.visible = false;
+    ui.triInfo.textContent = lenGC < 1e-3 ? '' : 'ゴースト側の角 90.0°（手球が延長線の真横）';
+    return;
+  }
+
+  // ゴースト側の角 = GF と GC のなす角
+  const u1 = gf.clone().normalize(), u2 = gc.clone().normalize();
+  const ang = Math.acos(THREE.MathUtils.clamp(u1.dot(u2), -1, 1));
+  const deg = THREE.MathUtils.radToDeg(ang);
+
+  // 角の円弧（u1 から u2 へ回す）
+  const r = Math.max(1.5, Math.min(4 * R, lenGF * 0.6, lenGC * 0.6));
+  const a0 = Math.atan2(u1.z, u1.x);
+  let da = Math.atan2(u2.z, u2.x) - a0;
+  if (da > Math.PI) da -= 2 * Math.PI;
+  if (da < -Math.PI) da += 2 * Math.PI;
+  const pts = [];
+  for (let i = 0; i <= ARC_N; i++) {
+    const th = a0 + (da * i) / ARC_N;
+    pts.push(G.x + Math.cos(th) * r, TRI_Y, G.z + Math.sin(th) * r);
+  }
+  triArc.geometry.setPositions(pts);
+
+  const mid = a0 + da / 2, lr = r + 3.5;
+  triLabelPos.set(G.x + Math.cos(mid) * lr, TRI_Y, G.z + Math.sin(mid) * lr);
+  triLabelVisible = true;
+  ui.triLabel.textContent = deg.toFixed(1) + '°';
+
+  ui.triInfo.innerHTML = `ゴースト側の角 <b>${deg.toFixed(1)}°</b>　底辺 <b>${lenGF.toFixed(1)}cm</b>　高さ <b>${lenFC.toFixed(1)}cm</b>` +
+    (t > 0 ? '（手球が的球側にあり、延長線の前方で交わります）' : '');
+}
+
+// 角度ラベルを画面座標に追従させる
+const projV = new THREE.Vector3();
+function updateTriLabel() {
+  const el = ui.triLabel;
+  if (!triLabelVisible) { el.hidden = true; return; }
+  projV.copy(triLabelPos).project(camera);
+  if (projV.z > 1 || projV.z < -1) { el.hidden = true; return; }
+  el.hidden = false;
+  el.style.left = ((projV.x + 1) / 2) * window.innerWidth + 'px';
+  el.style.top = ((1 - projV.y) / 2) * window.innerHeight + 'px';
 }
 
 // 透視投影でのシルエット円（カメラから見た輪郭）を毎フレーム合わせる
@@ -543,6 +642,7 @@ const ui = {
   obX: $('obX'), obZ: $('obZ'), obXv: $('obXv'), obZv: $('obZv'),
   aim: $('aim'), ang: $('ang'), angv: $('angv'),
   cbX: $('cbX'), cbZ: $('cbZ'), cbXv: $('cbXv'), cbZv: $('cbZv'), cutInfo: $('cutInfo'),
+  triInfo: $('triInfo'), triLabel: $('triLabel'),
 };
 
 ui.obX.addEventListener('input', () => { state.ob.x = +ui.obX.value; updateScene(); });
@@ -550,6 +650,7 @@ ui.obZ.addEventListener('input', () => { state.ob.z = +ui.obZ.value; updateScene
 ui.cbX.addEventListener('input', () => { state.cb.x = +ui.cbX.value; updateScene(); });
 ui.cbZ.addEventListener('input', () => { state.cb.z = +ui.cbZ.value; updateScene(); });
 $('cbLine').addEventListener('change', e => { state.cbLine = e.target.checked; updateScene(); });
+$('triOn').addEventListener('change', e => { state.triOn = e.target.checked; updateScene(); });
 ui.aim.addEventListener('change', () => { state.aim = ui.aim.value; updateScene(); });
 ui.ang.addEventListener('input', () => {
   state.aim = 'manual';
@@ -616,7 +717,7 @@ container.addEventListener('pointerup', endDrag);
 container.addEventListener('pointercancel', endDrag);
 
 // ---------- persistence (Dexie / IndexedDB) ----------
-const SNAPSHOT_KEYS = ['aim', 'angle', 'transparent', 'contactSize', 'arrowOn', 'arrowCount', 'arrowHeight', 'grid', 'cbLine'];
+const SNAPSHOT_KEYS = ['aim', 'angle', 'transparent', 'contactSize', 'arrowOn', 'arrowCount', 'arrowHeight', 'grid', 'cbLine', 'triOn'];
 
 function snapshot() {
   const o = { ob: { x: state.ob.x, z: state.ob.z }, cb: { x: state.cb.x, z: state.cb.z } };
@@ -640,6 +741,7 @@ function syncUI() {
   ui.cbX.value = state.cb.x; ui.cbZ.value = state.cb.z;
   ui.aim.value = state.aim; ui.ang.value = state.angle;
   $('cbLine').checked = state.cbLine;
+  $('triOn').checked = state.triOn;
   $('transparent').checked = state.transparent;
   $('arrowOn').checked = state.arrowOn;
   const radio = (name, val) => {
@@ -767,6 +869,8 @@ function resize() {
   gridMats.point.resolution.set(w, h);
   gridMats.half.resolution.set(w, h);
   cbLineMat.resolution.set(w, h);
+  triMat.resolution.set(w, h);
+  triThinMat.resolution.set(w, h);
 }
 window.addEventListener('resize', resize);
 
@@ -779,6 +883,7 @@ restoreLast().finally(() => { restoring = false; });
 renderer.setAnimationLoop(() => {
   controls.update();
   updateOutline();
+  updateTriLabel();
   renderer.render(scene, camera);
 });
 </script>
