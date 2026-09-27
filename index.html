@@ -731,14 +731,19 @@ function setView(kind) {
   const mid = ghostPos().add(state.ob).multiplyScalar(0.5);
   controls.target.copy(mid);
   if (kind === 'cue') {
-    // 手球の真後ろ（ボール2個分後方・ボール2個分の高さ）からゴーストボール中心を見る
+    // 手球の真後ろからゴーストボール中心を見る。
+    // 手球を見下ろす角 CAM_ELEV、ゴーストとの見下ろし角の差が VIEW_SPREAD 以内（画角 ±22.5° に収める）
+    // になるよう後方距離を決める。最低でもボール4個分後方。
+    const CAM_ELEV = THREE.MathUtils.degToRad(25), VIEW_SPREAD = THREE.MathUtils.degToRad(16);
     const gp = ghostPos();
     const u = new THREE.Vector3(gp.x - state.cb.x, 0, gp.z - state.cb.z);
-    if (u.lengthSq() < 1e-6) u.copy(dir);
-    u.normalize();
+    const D = u.length();
+    if (D < 1e-6) u.copy(dir); else u.divideScalar(D);
+    const tA = Math.tan(CAM_ELEV), tB = Math.tan(CAM_ELEV - VIEW_SPREAD);
+    const back = Math.max(8 * R, (D * tB) / (tA - tB));
     controls.target.copy(gp);
-    camera.position.copy(state.cb).addScaledVector(u, -4 * R);
-    camera.position.y = 4 * R;
+    camera.position.copy(state.cb).addScaledVector(u, -back);
+    camera.position.y = R + back * tA;
   } else if (kind === 'top') {
     camera.position.set(mid.x, 90, mid.z + 0.01);
   } else if (kind === 'side') {
