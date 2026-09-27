@@ -145,6 +145,7 @@
         <button id="simReset" type="button">リセット</button>
       </div>
       <div class="row"><label class="check"><input id="simLoop" type="checkbox">ループ再生</label></div>
+      <div class="row"><label class="check"><input id="simPause" type="checkbox" checked>衝突時に 0.5 秒停止</label></div>
       <div class="row"><label>再生速度</label>
         <div class="seg">
           <input type="radio" name="simRate" id="sr0" value="1" checked><label for="sr0">1x</label>
@@ -260,6 +261,7 @@ const state = {
   throwFollow: 0,    // -1 引き … 0 ストップ … +1 押し（自然転がり）
   throwSide: 0,      // -1 左ひねり … +1 右ひねり（撞点 R/2 相当）
   simLoop: false,
+  simPause: true,
   angle: 0,          // 的球の進行方向（度）。XZ 平面で +X から +Z 方向へ
   aim: '2',
   transparent: false,
@@ -1102,7 +1104,7 @@ container.addEventListener('pointerup', endDrag);
 container.addEventListener('pointercancel', endDrag);
 
 // ---------- persistence (Dexie / IndexedDB) ----------
-const SNAPSHOT_KEYS = ['aim', 'angle', 'transparent', 'contactSize', 'arrowOn', 'arrowCount', 'arrowHeight', 'arrowStyle', 'aimCushion', 'grid', 'cbLine', 'triOn', 'tanOn', 'throwOn', 'throwSpeed', 'throwFollow', 'throwSide', 'simLoop'];
+const SNAPSHOT_KEYS = ['aim', 'angle', 'transparent', 'contactSize', 'arrowOn', 'arrowCount', 'arrowHeight', 'arrowStyle', 'aimCushion', 'grid', 'cbLine', 'triOn', 'tanOn', 'throwOn', 'throwSpeed', 'throwFollow', 'throwSide', 'simLoop', 'simPause'];
 
 function snapshot() {
   const o = { ob: { x: state.ob.x, z: state.ob.z }, cb: { x: state.cb.x, z: state.cb.z } };
@@ -1143,6 +1145,8 @@ function syncUI() {
   $('triOn').checked = state.triOn;
   $('tanOn').checked = state.tanOn;
   $('throwOn').checked = state.throwOn;
+  $('simLoop').checked = state.simLoop;
+  $('simPause').checked = state.simPause;
   $('tFollow').value = state.throwFollow;
   $('tSide').value = state.throwSide;
   $('transparent').checked = state.transparent;
@@ -1474,25 +1478,22 @@ function updatePocketLabels() {
   });
 }
 
-// 衝突検知: 球間距離 < 2R なら衝突フラグを立てる
-let collisionPause = null;
-
-function checkCollision(cb, ob) {
-  const dx = ob.x - cb.x, dz = ob.z - cb.z;
-  return Math.hypot(dx, dz) < 2 * R_M - 1e-6;
-}
+const HIT_PAUSE = 0.5;   // 実時間 [s]
 
 function tickSim(now) {
   if (!sim) return;
-  if (collisionPause) {
-    collisionPause -= (now - sim.last) / 1000;
-    if (collisionPause <= 0) collisionPause = null;
-    sim.last = now;
-    return;
-  }
-  const rate = +document.querySelector('input[name=simRate]:checked').value;
-  sim.t = Math.min(sim.duration, sim.t + ((now - sim.last) / 1000) * rate);
+  const dt = (now - sim.last) / 1000;
   sim.last = now;
+  if (sim.pause > 0) { sim.pause -= dt; return; }
+  const rate = +document.querySelector('input[name=simRate]:checked').value;
+  const prevT = sim.t;
+  sim.t = Math.min(sim.duration, sim.t + dt * rate);
+  const hitT = sim.events.firstHit;
+  // 衝突時刻をまたいだら、その瞬間の姿勢で止める
+  if (state.simPause && hitT !== null && prevT < hitT && sim.t >= hitT) {
+    sim.t = hitT;
+    sim.pause = HIT_PAUSE;
+  }
   if (sim.t >= sim.duration && state.simLoop) sim.t = 0;
   const fr = sim.frames;
   // 二分探索で現在フレーム
@@ -1506,18 +1507,12 @@ function tickSim(now) {
     mesh.position.set(a[0] + (b[0] - a[0]) * k, R, a[1] + (b[1] - a[1]) * k);
   });
   sim.trails.forEach(l => { l.geometry.instanceCount = lo; });
-  // 衝突検判定
-  if (!collisionPause && lo < sim.frames.length - 1 && !f0.p[0][2] && !f0.p[1][2]) {
-    if (checkCollision({ x: f0.p[0][0] / 100, z: f0.p[0][1] / 100 }, { x: f0.p[1][0] / 100, z: f0.p[1][1] / 100 })) {
-      collisionPause = 0.5;
-    }
-  }
 }
 
 $('simShot').addEventListener('click', startSim);
 $('simReset').addEventListener('click', () => { updateScene(); ui.simInfo.textContent = 'リセットしました'; });
-$('simLoop').addEventListener('change', e => { state.simLoop = e.target.checked; });
-$('simLoop').addEventListener('change', e => { state.simLoop = e.target.checked; });
+$('simLoop').addEventListener('change', e => { state.simLoop = e.target.checked; scheduleAutosave(); });
+$('simPause').addEventListener('change', e => { state.simPause = e.target.checked; scheduleAutosave(); });
 
 const panel = $('panel');
 $('toggle').addEventListener('click', () => {
