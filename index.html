@@ -495,7 +495,7 @@ const cpLine = new Line2(new LineGeometry(), cpLineMat);
 cpLine.geometry.setPositions([0, 0, 0, 1, 0, 0]);
 const cpDotGeo = new THREE.SphereGeometry(0.45, 16, 12);
 const cpDotMat = new THREE.MeshBasicMaterial({ color: 0x7dff6b });
-const cpDots = [new THREE.Mesh(cpDotGeo, cpDotMat), new THREE.Mesh(cpDotGeo, cpDotMat)];
+const cpDots = [0, 1, 2].map(() => new THREE.Mesh(cpDotGeo, cpDotMat));
 scene.add(cpLine, ...cpDots);
 
 // 直角三角形: G(ゴースト中心) - F(手球から的球ライン延長への垂線の足) - C(手球中心)。ラシャ面上に描く。
@@ -720,12 +720,19 @@ function updateScene() {
     cbLine.geometry.setPositions([state.cb.x, R, state.cb.z, gp.x, R, gp.z]);
     cbLine.computeLineDistances();
   }
-  cpLine.visible = cpDots[0].visible = cpDots[1].visible = state.cpLine;
-  if (state.cpLine) {
-    cpDots[0].position.copy(state.cb).addScaledVector(dir, R);
-    cpDots[1].position.copy(gp).addScaledVector(dir, R);
-    const [a, b] = cpDots.map(d => d.position);
-    cpLine.geometry.setPositions([a.x, a.y, a.z, b.x, b.y, b.z]);
+  const cue = new THREE.Vector3(gp.x - state.cb.x, 0, gp.z - state.cb.z);
+  const cpOn = state.cpLine && cue.lengthSq() > 1e-6;
+  cpLine.visible = cpOn;
+  cpDots.forEach(d => { d.visible = cpOn; });
+  if (cpOn) {
+    cue.normalize();
+    const [front, target, back] = cpDots.map(d => d.position);
+    front.copy(state.cb).addScaledVector(dir, R);
+    target.copy(gp).addScaledVector(dir, R);
+    // 手球を貫いて背面へ抜ける点、さらに後方へ延長
+    back.copy(front).addScaledVector(cue, -2 * R * dir.dot(cue));
+    const tail = back.clone().addScaledVector(cue, -6 * R);
+    cpLine.geometry.setPositions([tail.x, tail.y, tail.z, target.x, target.y, target.z]);
   }
   updateTriangle(gp, dir);
   updateTangent(gp, dir);
