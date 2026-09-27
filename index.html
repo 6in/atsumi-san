@@ -94,6 +94,17 @@
   <div class="body">
     <section>
       <h2>配置</h2>
+      <div class="row"><label for="obNum">的球</label>
+        <select id="obNum">
+          <option value="1">1（黄）</option><option value="2">2（青）</option><option value="3">3（赤）</option>
+          <option value="4">4（紫）</option><option value="5">5（橙）</option><option value="6">6（緑）</option>
+          <option value="7">7（えんじ）</option><option value="8">8（黒）</option>
+          <option value="9">9（黄ストライプ）</option><option value="10">10（青ストライプ）</option>
+          <option value="11">11（赤ストライプ）</option><option value="12">12（紫ストライプ）</option>
+          <option value="13">13（橙ストライプ）</option><option value="14">14（緑ストライプ）</option>
+          <option value="15">15（えんじストライプ）</option>
+        </select>
+      </div>
       <div class="row"><label for="aim">向き先</label>
         <select id="aim">
           <option value="manual">手動（角度）</option>
@@ -279,6 +290,7 @@ const state = {
   throwSide: 0,      // -1 左ひねり … +1 右ひねり（撞点 R/2 相当）
   simLoop: false,
   simPause: true,
+  obNumber: 1,
   angle: 0,          // 的球の進行方向（度）。XZ 平面で +X から +Z 方向へ
   aim: '2',
   transparent: false,
@@ -490,7 +502,8 @@ const ballGeo = new THREE.SphereGeometry(R, 64, 32);
 
 // 回転が見えるよう球面に模様を描く。SphereGeometry の UV（正距円筒）の各画素を球面上の方向に戻し、
 // 円形マーク（中心方向と角半径）の内側を塗るので極付近でも歪まない。text はマーク面に正対して描く。
-function makeBallTexture(base, marks) {
+// stripe: { color, h } を渡すと |y| < h の帯を塗る（ストライプボール）
+function makeBallTexture(base, marks, stripe = null) {
   const W = 1024, H = 512;
   const cv = document.createElement('canvas');
   cv.width = W; cv.height = H;
@@ -509,20 +522,20 @@ function makeBallTexture(base, marks) {
       tc.width = tc.height = TS;
       const t = tc.getContext('2d');
       t.fillStyle = '#000';
-      t.font = `bold ${TS * 0.8}px system-ui, sans-serif`;
+      t.font = `bold ${TS * (m.text.length > 1 ? 0.56 : 0.8)}px system-ui, sans-serif`;
       t.textAlign = 'center'; t.textBaseline = 'middle';
       t.fillText(m.text, TS / 2, TS * 0.54);
       glyph = t.getImageData(0, 0, TS, TS).data;
     }
     return { c, e1, e2, cosR: Math.cos(m.radius), tanR: Math.tan(m.radius), col: rgb(m.color), glyph };
   });
-  const baseCol = rgb(base), d = new THREE.Vector3();
+  const baseCol = rgb(base), bandCol = stripe && rgb(stripe.color), d = new THREE.Vector3();
   for (let py = 0; py < H; py++) {
     const th = ((py + 0.5) / H) * Math.PI;
     for (let px = 0; px < W; px++) {
       const ph = ((px + 0.5) / W) * Math.PI * 2;
       d.set(-Math.cos(ph) * Math.sin(th), Math.cos(th), Math.sin(ph) * Math.sin(th));
-      let col = baseCol;
+      let col = stripe && Math.abs(d.y) < stripe.h ? bandCol : baseCol;
       for (const m of prepared) {
         const cz = d.dot(m.c);
         if (cz < m.cosR) continue;
@@ -546,9 +559,21 @@ function makeBallTexture(base, marks) {
 const ballMat = map => new THREE.MeshStandardMaterial({ map, roughness: 0.25, metalness: 0.05 });
 const CUE_DOTS = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]]
   .map(dir => ({ dir, radius: 0.16, color: 0xd02828 }));
-const OB_MARKS = [[0, 0, 1], [0, 0, -1]].map(dir => ({ dir, radius: 0.38, color: 0xffffff, text: '1' }));
+// 1〜8 の色。9〜15 は白地に n−8 の色の帯
+const BALL_COLORS = [0xf5c400, 0x1f4fbf, 0xd0231f, 0x5b2a86, 0xf26a1b, 0x137a3a, 0x7a1f1f, 0x141414];
+const ballColor = n => BALL_COLORS[(n - 1) % 8];
+const obTextures = new Map();
+function obTexture(n) {
+  if (!obTextures.has(n)) {
+    const marks = [[0, 0, 1], [0, 0, -1]].map(dir => ({ dir, radius: 0.38, color: 0xffffff, text: String(n) }));
+    obTextures.set(n, n <= 8
+      ? makeBallTexture(ballColor(n), marks)
+      : makeBallTexture(0xf7f5ec, marks, { color: ballColor(n), h: 0.5 }));
+  }
+  return obTextures.get(n);
+}
 
-const obBall = new THREE.Mesh(ballGeo, ballMat(makeBallTexture(0xf5c400, OB_MARKS)));
+const obBall = new THREE.Mesh(ballGeo, ballMat(obTexture(1)));
 obBall.castShadow = true;
 scene.add(obBall);
 
@@ -796,6 +821,12 @@ function aimPoint(i) {
 
 function updateScene() {
   stopSim();
+  const obMap = obTexture(state.obNumber);
+  if (obBall.material.map !== obMap) {
+    obBall.material.map = obMap;
+    obBall.material.needsUpdate = true;
+    trailMats[1].color.setHex(ballColor(state.obNumber));
+  }
   if (state.aim !== 'manual') {
     const [px, pz] = aimPoint(+state.aim);
     let deg = THREE.MathUtils.radToDeg(Math.atan2(pz - state.ob.z, px - state.ob.x));
@@ -1212,6 +1243,7 @@ document.querySelectorAll('input[name=tspeed]').forEach(el =>
 $('tFollow').addEventListener('input', e => { state.throwFollow = +e.target.value; updateScene(); });
 $('tSide').addEventListener('input', e => { state.throwSide = +e.target.value; updateScene(); });
 ui.aim.addEventListener('change', () => { state.aim = ui.aim.value; updateScene(); });
+$('obNum').addEventListener('change', e => { state.obNumber = +e.target.value; updateScene(); });
 function setManualAngle(deg) {
   state.aim = 'manual';
   ui.aim.value = 'manual';
@@ -1307,7 +1339,7 @@ container.addEventListener('pointerup', endDrag);
 container.addEventListener('pointercancel', endDrag);
 
 // ---------- persistence (Dexie / IndexedDB) ----------
-const SNAPSHOT_KEYS = ['aim', 'angle', 'transparent', 'contactSize', 'arrowOn', 'arrowCount', 'arrowHeight', 'arrowStyle', 'aimCushion', 'grid', 'cbLine', 'cpLine', 'thickOn', 'thickWallOn', 'triOn', 'tanOn', 'throwOn', 'throwSpeed', 'throwFollow', 'throwSide', 'simLoop', 'simPause'];
+const SNAPSHOT_KEYS = ['obNumber', 'aim', 'angle', 'transparent', 'contactSize', 'arrowOn', 'arrowCount', 'arrowHeight', 'arrowStyle', 'aimCushion', 'grid', 'cbLine', 'cpLine', 'thickOn', 'thickWallOn', 'triOn', 'tanOn', 'throwOn', 'throwSpeed', 'throwFollow', 'throwSide', 'simLoop', 'simPause'];
 
 function snapshot() {
   const o = { ob: { x: state.ob.x, z: state.ob.z }, cb: { x: state.cb.x, z: state.cb.z } };
@@ -1341,6 +1373,7 @@ function applySnapshot(o) {
 // state → フォーム
 function syncUI() {
   ui.aim.value = state.aim; ui.ang.value = state.angle;
+  $('obNum').value = state.obNumber;
   $('cbLine').checked = state.cbLine;
   $('cpLine').checked = state.cpLine;
   $('thickOn').checked = state.thickOn;
