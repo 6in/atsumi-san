@@ -243,6 +243,8 @@ const TL = 254, TW = 127;        // プレイエリア（9ft）
 const CUSHION_H = 3.6, CUSHION_W = 5;
 const RAIL_W = 14, RAIL_H = 4.4;
 const CONTACT_SIZES = [0.25, 0.45, 0.75];
+const PIERCE_WIDTHS = [1.2, 2, 3.5];   // 貫き線の太さ [px]（接点サイズに連動）
+const PIERCE_TAIL = 6 * R;             // 手球背面からさらに後方へ伸ばす長さ
 const ARROW_TOP_Y = 2 * R + 0.8;
 
 const GAP_C = 7, GAP_S = 6.5;    // クッション切り欠き: コーナーは角から、サイドは中央から
@@ -487,13 +489,14 @@ scene.add(cueBall);
 const cbLineMat = new LineMaterial({ color: 0xffffff, linewidth: 1.5, dashed: true, dashSize: 1.5, gapSize: 1, transparent: true, opacity: 0.8 });
 const cbLine = new Line2(new LineGeometry(), cbLineMat);
 cbLine.geometry.setPositions([0, 0, 0, 1, 0, 0]);
-scene.add(cbLine);
+const cbBackDot = new THREE.Mesh(new THREE.SphereGeometry(1, 16, 12), new THREE.MeshBasicMaterial({ color: 0xffffff }));
+scene.add(cbLine, cbBackDot);
 
 // 接点ガイド: 手球上の接点（中心から的球の進行方向へ R）→ ゴーストと的球の接点
 const cpLineMat = new LineMaterial({ color: 0x7dff6b, linewidth: 2 });
 const cpLine = new Line2(new LineGeometry(), cpLineMat);
 cpLine.geometry.setPositions([0, 0, 0, 1, 0, 0]);
-const cpDotGeo = new THREE.SphereGeometry(0.45, 16, 12);
+const cpDotGeo = new THREE.SphereGeometry(1, 16, 12);
 const cpDotMat = new THREE.MeshBasicMaterial({ color: 0x7dff6b });
 const cpDots = [0, 1, 2].map(() => new THREE.Mesh(cpDotGeo, cpDotMat));
 scene.add(cpLine, ...cpDots);
@@ -715,23 +718,31 @@ function updateScene() {
 
   // キューボールとライン
   cueBall.position.copy(state.cb);
-  cbLine.visible = state.cbLine;
-  if (state.cbLine) {
-    cbLine.geometry.setPositions([state.cb.x, R, state.cb.z, gp.x, R, gp.z]);
+  // 貫き線: 手球を貫いて背面の抜け点に印を付け、さらに後方へ延長
+  const cue = new THREE.Vector3(gp.x - state.cb.x, 0, gp.z - state.cb.z);
+  const hasCue = cue.lengthSq() > 1e-6;
+  if (hasCue) cue.normalize();
+  cbLineMat.linewidth = PIERCE_WIDTHS[state.contactSize];
+  cpLineMat.linewidth = PIERCE_WIDTHS[state.contactSize] + 0.5;
+  cbBackDot.scale.setScalar(s);
+  cpDots.forEach(d => d.scale.setScalar(s));
+  cbLine.visible = cbBackDot.visible = state.cbLine && hasCue;
+  if (cbLine.visible) {
+    cbBackDot.position.copy(state.cb).addScaledVector(cue, -R);
+    const tail = cbBackDot.position.clone().addScaledVector(cue, -PIERCE_TAIL);
+    cbLine.geometry.setPositions([tail.x, R, tail.z, gp.x, R, gp.z]);
     cbLine.computeLineDistances();
   }
-  const cue = new THREE.Vector3(gp.x - state.cb.x, 0, gp.z - state.cb.z);
-  const cpOn = state.cpLine && cue.lengthSq() > 1e-6;
+  const cpOn = state.cpLine && hasCue;
   cpLine.visible = cpOn;
   cpDots.forEach(d => { d.visible = cpOn; });
   if (cpOn) {
-    cue.normalize();
     const [front, target, back] = cpDots.map(d => d.position);
     front.copy(state.cb).addScaledVector(dir, R);
     target.copy(gp).addScaledVector(dir, R);
     // 手球を貫いて背面へ抜ける点、さらに後方へ延長
     back.copy(front).addScaledVector(cue, -2 * R * dir.dot(cue));
-    const tail = back.clone().addScaledVector(cue, -6 * R);
+    const tail = back.clone().addScaledVector(cue, -PIERCE_TAIL);
     cpLine.geometry.setPositions([tail.x, tail.y, tail.z, target.x, target.y, target.z]);
   }
   updateTriangle(gp, dir);
@@ -1459,7 +1470,7 @@ function startSim() {
   const res = runSimulation();
   if (!res) { ui.simInfo.textContent = '手球とゴーストボールが重なっていて撞けません'; return; }
   // 補助表示を隠す
-  [ghost, ghostCenter, outline, groundContact, ballContact, arrowGroup, cbLine, cpLine, ...cpDots, triLine, triRight, triArc,
+  [ghost, ghostCenter, outline, groundContact, ballContact, arrowGroup, cbLine, cbBackDot, cpLine, ...cpDots, triLine, triRight, triArc,
    tanLine, tanEnd, throwLine, compGhost, compAimLine].forEach(o => { o.visible = false; });
   triLabelVisible = false;
   const trails = [0, 1].map(i => {
