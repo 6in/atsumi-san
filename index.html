@@ -1,6 +1,5 @@
 <!doctype html>
 <html lang="ja">
-<!-- Cache buster: 1790507646987 -->
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
@@ -95,12 +94,12 @@
       <div class="row"><label for="aim">向き先</label>
         <select id="aim">
           <option value="manual">手動（角度）</option>
-          <option value="0">A（左下コーナー）</option>
-          <option value="1">B（下サイド）</option>
-          <option value="2" selected>C（右下コーナー）</option>
-          <option value="3">D（左上コーナー）</option>
-          <option value="4">E（上サイド）</option>
-          <option value="5">F（右上コーナー）</option>
+          <option value="0">A（左上コーナー）</option>
+          <option value="1">B（上サイド）</option>
+          <option value="2" selected>C（右上コーナー）</option>
+          <option value="3">D（左下コーナー）</option>
+          <option value="4">E（下サイド）</option>
+          <option value="5">F（右下コーナー）</option>
         </select>
       </div>
       <div class="row"><label class="check"><input id="aimCushion" type="checkbox" checked>クッションを考慮して狙う</label></div>
@@ -1450,30 +1449,29 @@ function startSim() {
 
 // ポケットラベル表示
 const pocketLabels = ['A', 'B', 'C', 'D', 'E', 'F'];
-let labelDebugOnce = false;
+// コーナーは台の外角、サイドはレール外縁の上
+const LABEL_EDGE_X = TL / 2 + CUSHION_W + RAIL_W, LABEL_EDGE_Z = TW / 2 + CUSHION_W + RAIL_W;
+const labelAnchors = POCKETS.map(([px, pz]) => new THREE.Vector3(
+  px === 0 ? 0 : Math.sign(px) * LABEL_EDGE_X, RAIL_H + 2, Math.sign(pz) * LABEL_EDGE_Z));
+const labelSpans = pocketLabels.map(t => {
+  const span = document.createElement('span');
+  span.textContent = t;
+  span.style.cssText = 'position:absolute;left:0;top:0;transform:translate(-50%,-50%);' +
+    'color:#ffff00;font-size:32px;font-weight:900;text-shadow:0 0 8px rgba(0,0,0,0.9), 0 0 4px rgba(255,255,0,0.5);';
+  document.getElementById('pocketLabels').appendChild(span);
+  return span;
+});
+const _lp = new THREE.Vector3();
 function updatePocketLabels() {
-  const labelDiv = document.getElementById('pocketLabels');
-  if (!labelDiv) return;
-  labelDiv.innerHTML = '';
-  const w = renderer.domElement.clientWidth;
-  const h = renderer.domElement.clientHeight;
-  if (!labelDebugOnce) {
-    console.log(`Renderer dimensions: ${w}x${h}, canvas: ${renderer.domElement.canvas?.width}x${renderer.domElement.canvas?.height}`);
-    labelDebugOnce = true;
-  }
-  for (let i = 0; i < POCKETS.length; i++) {
-    const [px, pz] = POCKETS[i];
-    const p3 = new THREE.Vector3(px / 100, 0.1, pz / 100);
-    const p2 = p3.clone().project(camera);
-    const x = (p2.x * 0.5 + 0.5) * w;
-    const y = (-p2.y * 0.5 + 0.5) * h;
-    if (i === 0) console.log(`Pocket ${i}: px=${px}, pz=${pz}, p2={x:${p2.x.toFixed(3)},y:${p2.y.toFixed(3)}} -> screen (${x.toFixed(0)}, ${y.toFixed(0)}) of (${w}, ${h})`);
-    const span = document.createElement('span');
-    span.textContent = pocketLabels[i];
-    span.style.cssText = `position:absolute;left:${x}px;top:${y}px;transform:translate(-50%,-50%);` +
-      `color:#ffff00;font-size:32px;font-weight:900;text-shadow:0 0 8px rgba(0,0,0,0.9), 0 0 4px rgba(255,255,0,0.5);letter-spacing:2px;z-index:100;`;
-    labelDiv.appendChild(span);
-  }
+  const w = renderer.domElement.clientWidth, h = renderer.domElement.clientHeight;
+  labelAnchors.forEach((a, i) => {
+    _lp.copy(a).project(camera);
+    const s = labelSpans[i];
+    if (_lp.z > 1) { s.style.display = 'none'; return; }
+    s.style.display = '';
+    s.style.left = `${(_lp.x * 0.5 + 0.5) * w}px`;
+    s.style.top = `${(-_lp.y * 0.5 + 0.5) * h}px`;
+  });
 }
 
 // 衝突検知: 球間距離 < 2R なら衝突フラグを立てる
@@ -1561,22 +1559,6 @@ renderer.setAnimationLoop(now => {
 });
 </script>
 <script>
-
-// ページ読み込み時にキャッシュをクリア
-async function clearOldCache() {
-  try {
-    const db = await new Promise((res, rej) => {
-      const req = indexedDB.open('BilliardsPracticeDB');
-      req.onsuccess = () => res(req.result);
-      req.onerror = () => rej(req.error);
-    });
-    db.close();
-    indexedDB.deleteDatabase('BilliardsPracticeDB');
-    console.log('Old cache cleared');
-  } catch (e) { }
-}
-clearOldCache();
-
   // importmap / CDN 読込失敗時の表示
   window.addEventListener('error', e => {
     document.getElementById('err').textContent = '読み込みエラー: ' + (e.message || 'Three.js を取得できません');
