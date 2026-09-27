@@ -126,6 +126,17 @@
     </section>
 
     <section>
+      <h2>グリッド（ポイント）</h2>
+      <div class="row"><label>表示</label>
+        <div class="seg">
+          <input type="radio" name="grid" id="gr0" value="off" checked><label for="gr0">なし</label>
+          <input type="radio" name="grid" id="gr1" value="point"><label for="gr1">ポイント</label>
+          <input type="radio" name="grid" id="gr2" value="half"><label for="gr2">＋ハーフ</label>
+        </div>
+      </div>
+    </section>
+
+    <section>
       <h2>視点</h2>
       <div class="btns">
         <button id="viewBehind" type="button">ゴースト後方</button>
@@ -143,6 +154,8 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { Line2 } from 'three/addons/lines/Line2.js';
 import { LineMaterial } from 'three/addons/lines/LineMaterial.js';
 import { LineGeometry } from 'three/addons/lines/LineGeometry.js';
+import { LineSegments2 } from 'three/addons/lines/LineSegments2.js';
+import { LineSegmentsGeometry } from 'three/addons/lines/LineSegmentsGeometry.js';
 
 // 単位: cm。y が上方向、ラシャ面が y=0。X は台の長手方向、Z は短手方向。
 const R = 5.715 / 2;             // ボール半径
@@ -166,6 +179,7 @@ const state = {
   arrowOn: true,
   arrowCount: 1,
   arrowHeight: 'center',
+  grid: 'off',       // off | point | half
 };
 
 // ---------- renderer / scene ----------
@@ -269,6 +283,35 @@ function buildTable() {
   }
 }
 buildTable();
+
+// ---------- grid ----------
+// ポイント（ダイヤモンド）間隔: 長辺 TL/8、短辺 TW/4。ハーフはその半分。
+const gridMats = {
+  point: new LineMaterial({ color: 0xffffff, linewidth: 1.5, transparent: true, opacity: 0.55, depthWrite: false }),
+  half: new LineMaterial({ color: 0xffffff, linewidth: 1, transparent: true, opacity: 0.25, depthWrite: false }),
+};
+
+function makeGrid(divX, divZ, skip, mat) {
+  const y = 0.03, pos = [];
+  for (let i = 1; i < divX; i++) {
+    if (skip && i % 2 === 0) continue;
+    const x = -TL / 2 + (TL / divX) * i;
+    pos.push(x, y, -TW / 2, x, y, TW / 2);
+  }
+  for (let i = 1; i < divZ; i++) {
+    if (skip && i % 2 === 0) continue;
+    const z = -TW / 2 + (TW / divZ) * i;
+    pos.push(-TL / 2, y, z, TL / 2, y, z);
+  }
+  const g = new LineSegmentsGeometry();
+  g.setPositions(pos);
+  const l = new LineSegments2(g, mat);
+  l.visible = false;
+  scene.add(l);
+  return l;
+}
+const gridPoint = makeGrid(8, 4, false, gridMats.point);
+const gridHalf = makeGrid(16, 8, true, gridMats.half);
 
 // ---------- balls ----------
 const ballGeo = new THREE.SphereGeometry(R, 64, 32);
@@ -395,6 +438,9 @@ function updateScene() {
     }
   }
 
+  gridPoint.visible = state.grid !== 'off';
+  gridHalf.visible = state.grid === 'half';
+
   ui.obXv.value = state.ob.x.toFixed(1);
   ui.obZv.value = state.ob.z.toFixed(1);
   ui.angv.value = state.angle.toFixed(1) + '°';
@@ -456,6 +502,8 @@ document.querySelectorAll('input[name=acount]').forEach(el =>
   el.addEventListener('change', () => { state.arrowCount = +el.value; updateScene(); }));
 document.querySelectorAll('input[name=aheight]').forEach(el =>
   el.addEventListener('change', () => { state.arrowHeight = el.value; updateScene(); }));
+document.querySelectorAll('input[name=grid]').forEach(el =>
+  el.addEventListener('change', () => { state.grid = el.value; updateScene(); }));
 $('viewBehind').addEventListener('click', () => setView('behind'));
 $('viewTop').addEventListener('click', () => setView('top'));
 $('viewSide').addEventListener('click', () => setView('side'));
@@ -476,6 +524,8 @@ function resize() {
   camera.aspect = w / h;
   camera.updateProjectionMatrix();
   outlineMat.resolution.set(w, h);
+  gridMats.point.resolution.set(w, h);
+  gridMats.half.resolution.set(w, h);
 }
 window.addEventListener('resize', resize);
 
