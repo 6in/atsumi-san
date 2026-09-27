@@ -1455,7 +1455,8 @@ function updatePocketLabels() {
   labelDiv.innerHTML = '';
   for (let i = 0; i < POCKETS.length; i++) {
     const [px, pz] = POCKETS[i];
-    const p3 = new THREE.Vector3(px / 100, 0.5, pz / 100);
+    // ポケット位置（台の上）にラベルを配置
+    const p3 = new THREE.Vector3(px / 100, 0.1, pz / 100);
     const p2 = p3.clone().project(camera);
     const x = (p2.x * 0.5 + 0.5) * renderer.domElement.clientWidth;
     const y = (-p2.y * 0.5 + 0.5) * renderer.domElement.clientHeight;
