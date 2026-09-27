@@ -43,8 +43,7 @@
   .check input { width: 18px; height: 18px; accent-color: var(--accent); }
   button { background: #2a2e33; color: var(--fg); border: 1px solid var(--line); border-radius: 6px; padding: 6px 10px; cursor: pointer; font: inherit; }
   button:active { background: #3a3f45; }
-  .btns { display: flex; gap: 8px; }
-  .btns button { flex: 1; }
+  .btns { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
   .legend { display: flex; gap: 12px; font-size: 12px; color: var(--muted); }
   .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; vertical-align: -1px; margin-right: 4px; }
   .row input[type=text] { flex: 1; min-width: 0; background: #2a2e33; color: var(--fg); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; font: inherit; }
@@ -178,6 +177,7 @@
     <section>
       <h2>視点</h2>
       <div class="btns">
+        <button id="viewCue" type="button">手球の真後ろ</button>
         <button id="viewBehind" type="button">ゴースト後方</button>
         <button id="viewTop" type="button">真上</button>
         <button id="viewSide" type="button">真横</button>
@@ -730,7 +730,16 @@ function setView(kind) {
   const dir = dirVec();
   const mid = ghostPos().add(state.ob).multiplyScalar(0.5);
   controls.target.copy(mid);
-  if (kind === 'top') {
+  if (kind === 'cue') {
+    // 手球の真後ろ（ボール2個分後方・ボール2個分の高さ）からゴーストボール中心を見る
+    const gp = ghostPos();
+    const u = new THREE.Vector3(gp.x - state.cb.x, 0, gp.z - state.cb.z);
+    if (u.lengthSq() < 1e-6) u.copy(dir);
+    u.normalize();
+    controls.target.copy(gp);
+    camera.position.copy(state.cb).addScaledVector(u, -4 * R);
+    camera.position.y = 4 * R;
+  } else if (kind === 'top') {
     camera.position.set(mid.x, 90, mid.z + 0.01);
   } else if (kind === 'side') {
     const perp = new THREE.Vector3(-dir.z, 0, dir.x);
@@ -780,6 +789,7 @@ document.querySelectorAll('input[name=aheight]').forEach(el =>
 document.querySelectorAll('input[name=grid]').forEach(el =>
   el.addEventListener('change', () => { state.grid = el.value; updateScene(); }));
 $('viewBehind').addEventListener('click', () => setView('behind'));
+$('viewCue').addEventListener('click', () => setView('cue'));
 controls.addEventListener('change', () => scheduleAutosave());
 $('viewTop').addEventListener('click', () => setView('top'));
 $('viewSide').addEventListener('click', () => setView('side'));
