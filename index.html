@@ -1,5 +1,6 @@
 <!doctype html>
 <html lang="ja">
+<!-- Cache buster: 1790507646987 -->
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
@@ -1553,6 +1554,22 @@ renderer.setAnimationLoop(now => {
 });
 </script>
 <script>
+
+// ページ読み込み時にキャッシュをクリア
+async function clearOldCache() {
+  try {
+    const db = await new Promise((res, rej) => {
+      const req = indexedDB.open('BilliardsPracticeDB');
+      req.onsuccess = () => res(req.result);
+      req.onerror = () => rej(req.error);
+    });
+    db.close();
+    indexedDB.deleteDatabase('BilliardsPracticeDB');
+    console.log('Old cache cleared');
+  } catch (e) { }
+}
+clearOldCache();
+
   // importmap / CDN 読込失敗時の表示
   window.addEventListener('error', e => {
     document.getElementById('err').textContent = '読み込みエラー: ' + (e.message || 'Three.js を取得できません');
