@@ -47,6 +47,15 @@
   .btns button { flex: 1; }
   .legend { display: flex; gap: 12px; font-size: 12px; color: var(--muted); }
   .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; vertical-align: -1px; margin-right: 4px; }
+  .row input[type=text] { flex: 1; min-width: 0; background: #2a2e33; color: var(--fg); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; font: inherit; }
+  .stat { font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .stat b { color: var(--fg); font-weight: 600; }
+  #saveList { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 4px; }
+  #saveList li { display: flex; align-items: center; gap: 6px; }
+  #saveList .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #saveList button { padding: 3px 8px; font-size: 12px; }
+  #saveList .empty { color: var(--muted); font-size: 12px; }
+  #saveMsg { min-height: 1em; margin: 6px 0 0; font-size: 12px; color: var(--muted); }
   #err { position: fixed; left: 12px; bottom: 12px; color: #ff8080; }
 
   @media (max-width: 640px) {
@@ -57,6 +66,7 @@
     #toggle { display: inline-block; padding: 4px 10px; }
   }
 </style>
+<script src="https://cdn.jsdelivr.net/npm/dexie@4.4.6/dist/dexie.min.js"></script>
 <script type="importmap">
 { "imports": {
   "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
@@ -89,6 +99,15 @@
         </select>
       </div>
       <div class="row"><label for="ang">角度</label><input id="ang" type="range" min="0" max="359.5" step="0.5" value="0"><output id="angv"></output></div>
+    </section>
+
+    <section>
+      <h2>キューボール</h2>
+      <div class="row"><label for="cbX">手球 X</label><input id="cbX" type="range" min="-124" max="124" step="0.5" value="-50"><output id="cbXv"></output></div>
+      <div class="row"><label for="cbZ">手球 Y</label><input id="cbZ" type="range" min="-60" max="60" step="0.5" value="20"><output id="cbZv"></output></div>
+      <div class="row"><label class="check"><input id="cbLine" type="checkbox" checked>手球→ゴーストのライン</label></div>
+      <div class="stat" id="cutInfo"></div>
+      <div class="stat">ボールは台上でドラッグしても動かせます</div>
     </section>
 
     <section>
@@ -137,6 +156,13 @@
     </section>
 
     <section>
+      <h2>保存</h2>
+      <div class="row"><input id="saveName" type="text" maxlength="40" placeholder="配置名（同名は上書き）"><button id="saveBtn" type="button">保存</button></div>
+      <ul id="saveList"></ul>
+      <p id="saveMsg"></p>
+    </section>
+
+    <section>
       <h2>視点</h2>
       <div class="btns">
         <button id="viewBehind" type="button">ゴースト後方</button>
@@ -172,6 +198,8 @@ const POCKETS = [
 
 const state = {
   ob: new THREE.Vector3(40, R, -20),
+  cb: new THREE.Vector3(-50, R, 20),
+  cbLine: true,
   angle: 0,          // 的球の進行方向（度）。XZ 平面で +X から +Z 方向へ
   aim: '2',
   transparent: false,
@@ -319,6 +347,15 @@ const obBall = new THREE.Mesh(ballGeo, new THREE.MeshStandardMaterial({ color: 0
 obBall.castShadow = true;
 scene.add(obBall);
 
+const cueBall = new THREE.Mesh(ballGeo, new THREE.MeshStandardMaterial({ color: 0xf7f5ec, roughness: 0.25, metalness: 0.05 }));
+cueBall.castShadow = true;
+scene.add(cueBall);
+
+const cbLineMat = new LineMaterial({ color: 0xffffff, linewidth: 1.5, dashed: true, dashSize: 1.5, gapSize: 1, transparent: true, opacity: 0.8 });
+const cbLine = new Line2(new LineGeometry(), cbLineMat);
+cbLine.geometry.setPositions([0, 0, 0, 1, 0, 0]);
+scene.add(cbLine);
+
 const ghostMat = new THREE.MeshStandardMaterial({ color: 0x9a9a9a, roughness: 0.35 });
 const ghost = new THREE.Mesh(ballGeo, ghostMat);
 ghost.castShadow = true;
@@ -438,12 +475,34 @@ function updateScene() {
     }
   }
 
+  // キューボールとライン
+  cueBall.position.copy(state.cb);
+  cbLine.visible = state.cbLine;
+  if (state.cbLine) {
+    cbLine.geometry.setPositions([state.cb.x, R, state.cb.z, gp.x, R, gp.z]);
+    cbLine.computeLineDistances();
+  }
+  const toGhost = gp.clone().sub(state.cb);
+  const dist = toGhost.length();
+  if (dist < 2 * R - 1e-6) {
+    ui.cutInfo.textContent = '手球がゴーストボールと重なっています';
+  } else {
+    const cut = THREE.MathUtils.radToDeg(Math.acos(THREE.MathUtils.clamp(toGhost.normalize().dot(dir), -1, 1)));
+    ui.cutInfo.innerHTML = cut >= 90
+      ? `カット角 <b>${cut.toFixed(1)}°</b>（90°以上: 狙えません）`
+      : `カット角 <b>${cut.toFixed(1)}°</b>　厚み <b>${(1 - Math.sin(THREE.MathUtils.degToRad(cut))).toFixed(2)}</b>　距離 <b>${dist.toFixed(1)}cm</b>`;
+  }
+
   gridPoint.visible = state.grid !== 'off';
   gridHalf.visible = state.grid === 'half';
 
   ui.obXv.value = state.ob.x.toFixed(1);
   ui.obZv.value = state.ob.z.toFixed(1);
+  ui.cbXv.value = state.cb.x.toFixed(1);
+  ui.cbZv.value = state.cb.z.toFixed(1);
   ui.angv.value = state.angle.toFixed(1) + '°';
+
+  scheduleAutosave();
 }
 
 // 透視投影でのシルエット円（カメラから見た輪郭）を毎フレーム合わせる
@@ -483,10 +542,14 @@ const $ = id => document.getElementById(id);
 const ui = {
   obX: $('obX'), obZ: $('obZ'), obXv: $('obXv'), obZv: $('obZv'),
   aim: $('aim'), ang: $('ang'), angv: $('angv'),
+  cbX: $('cbX'), cbZ: $('cbZ'), cbXv: $('cbXv'), cbZv: $('cbZv'), cutInfo: $('cutInfo'),
 };
 
 ui.obX.addEventListener('input', () => { state.ob.x = +ui.obX.value; updateScene(); });
 ui.obZ.addEventListener('input', () => { state.ob.z = +ui.obZ.value; updateScene(); });
+ui.cbX.addEventListener('input', () => { state.cb.x = +ui.cbX.value; updateScene(); });
+ui.cbZ.addEventListener('input', () => { state.cb.z = +ui.cbZ.value; updateScene(); });
+$('cbLine').addEventListener('change', e => { state.cbLine = e.target.checked; updateScene(); });
 ui.aim.addEventListener('change', () => { state.aim = ui.aim.value; updateScene(); });
 ui.ang.addEventListener('input', () => {
   state.aim = 'manual';
@@ -508,6 +571,183 @@ $('viewBehind').addEventListener('click', () => setView('behind'));
 $('viewTop').addEventListener('click', () => setView('top'));
 $('viewSide').addEventListener('click', () => setView('side'));
 
+// ---------- drag ----------
+// ボール上で押したときだけドラッグ。OrbitControls より先に捕まえるため親要素の capture で受ける。
+const raycaster = new THREE.Raycaster();
+const ndc = new THREE.Vector2();
+const dragPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -R);
+const hitPt = new THREE.Vector3();
+let dragging = null;
+
+function setRay(e) {
+  const r = renderer.domElement.getBoundingClientRect();
+  ndc.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
+  raycaster.setFromCamera(ndc, camera);
+}
+
+container.addEventListener('pointerdown', e => {
+  if (!e.isPrimary) return;
+  setRay(e);
+  const hit = raycaster.intersectObjects([cueBall, obBall], false)[0];
+  if (!hit) return;
+  dragging = { key: hit.object === cueBall ? 'cb' : 'ob', id: e.pointerId };
+  controls.enabled = false;
+  container.setPointerCapture(e.pointerId);
+  e.stopPropagation();
+}, { capture: true });
+
+container.addEventListener('pointermove', e => {
+  if (!dragging || e.pointerId !== dragging.id) return;
+  setRay(e);
+  if (!raycaster.ray.intersectPlane(dragPlane, hitPt)) return;
+  const v = state[dragging.key];
+  v.x = THREE.MathUtils.clamp(Math.round(hitPt.x * 2) / 2, -TL / 2 + R, TL / 2 - R);
+  v.z = THREE.MathUtils.clamp(Math.round(hitPt.z * 2) / 2, -TW / 2 + R, TW / 2 - R);
+  syncUI();
+  updateScene();
+});
+
+function endDrag(e) {
+  if (!dragging || e.pointerId !== dragging.id) return;
+  dragging = null;
+  controls.enabled = true;
+}
+container.addEventListener('pointerup', endDrag);
+container.addEventListener('pointercancel', endDrag);
+
+// ---------- persistence (Dexie / IndexedDB) ----------
+const SNAPSHOT_KEYS = ['aim', 'angle', 'transparent', 'contactSize', 'arrowOn', 'arrowCount', 'arrowHeight', 'grid', 'cbLine'];
+
+function snapshot() {
+  const o = { ob: { x: state.ob.x, z: state.ob.z }, cb: { x: state.cb.x, z: state.cb.z } };
+  for (const k of SNAPSHOT_KEYS) o[k] = state[k];
+  return o;
+}
+
+function applySnapshot(o) {
+  if (!o) return;
+  if (o.ob) state.ob.set(o.ob.x, R, o.ob.z);
+  if (o.cb) state.cb.set(o.cb.x, R, o.cb.z);
+  for (const k of SNAPSHOT_KEYS) if (k in o) state[k] = o[k];
+  syncUI();
+  syncArrowUI();
+  updateScene();
+}
+
+// state → フォーム
+function syncUI() {
+  ui.obX.value = state.ob.x; ui.obZ.value = state.ob.z;
+  ui.cbX.value = state.cb.x; ui.cbZ.value = state.cb.z;
+  ui.aim.value = state.aim; ui.ang.value = state.angle;
+  $('cbLine').checked = state.cbLine;
+  $('transparent').checked = state.transparent;
+  $('arrowOn').checked = state.arrowOn;
+  const radio = (name, val) => {
+    const el = document.querySelector(`input[name=${name}][value="${val}"]`);
+    if (el) el.checked = true;
+  };
+  radio('csize', state.contactSize);
+  radio('acount', state.arrowCount);
+  radio('aheight', state.arrowHeight);
+  radio('grid', state.grid);
+}
+
+let db = null;
+try {
+  if (typeof Dexie === 'undefined') throw new Error('Dexie を読み込めません');
+  db = new Dexie('ghostBallTrainer');
+  db.version(1).stores({
+    layouts: '++id, &name, updatedAt',
+    kv: 'key',
+  });
+} catch (err) {
+  db = null;
+  $('saveMsg').textContent = '保存は使えません: ' + err.message;
+}
+
+let autosaveTimer = 0;
+let restoring = true;   // 起動時の復元が終わるまで自動保存しない
+function scheduleAutosave() {
+  if (!db || restoring) return;
+  clearTimeout(autosaveTimer);
+  autosaveTimer = setTimeout(() => {
+    db.kv.put({ key: 'last', value: snapshot() }).catch(() => {});
+  }, 400);
+}
+
+async function renderSaveList() {
+  const list = $('saveList');
+  list.textContent = '';
+  if (!db) return;
+  const rows = await db.layouts.orderBy('updatedAt').reverse().toArray();
+  if (!rows.length) {
+    const li = document.createElement('li');
+    li.className = 'empty';
+    li.textContent = '保存した配置はまだありません';
+    list.append(li);
+    return;
+  }
+  for (const row of rows) {
+    const li = document.createElement('li');
+    const name = document.createElement('span');
+    name.className = 'name';
+    name.textContent = row.name;
+    name.title = new Date(row.updatedAt).toLocaleString();
+    const load = document.createElement('button');
+    load.type = 'button';
+    load.textContent = '読込';
+    load.addEventListener('click', () => {
+      applySnapshot(row.data);
+      $('saveName').value = row.name;
+      setView('behind');
+      $('saveMsg').textContent = `「${row.name}」を読み込みました`;
+    });
+    const del = document.createElement('button');
+    del.type = 'button';
+    del.textContent = '削除';
+    del.addEventListener('click', async () => {
+      if (del.dataset.armed !== '1') {
+        del.dataset.armed = '1';
+        del.textContent = '本当に削除';
+        setTimeout(() => { del.dataset.armed = ''; del.textContent = '削除'; }, 3000);
+        return;
+      }
+      await db.layouts.delete(row.id);
+      $('saveMsg').textContent = `「${row.name}」を削除しました`;
+      renderSaveList();
+    });
+    li.append(name, load, del);
+    list.append(li);
+  }
+}
+
+$('saveBtn').addEventListener('click', async () => {
+  if (!db) return;
+  const name = $('saveName').value.trim();
+  if (!name) { $('saveMsg').textContent = '配置名を入力してください'; return; }
+  try {
+    const data = snapshot(), updatedAt = Date.now();
+    const existing = await db.layouts.where('name').equals(name).first();
+    if (existing) await db.layouts.update(existing.id, { data, updatedAt });
+    else await db.layouts.add({ name, data, updatedAt });
+    $('saveMsg').textContent = `「${name}」を${existing ? '上書き' : '保存'}しました`;
+    renderSaveList();
+  } catch (err) {
+    $('saveMsg').textContent = '保存に失敗しました: ' + err.message;
+  }
+});
+
+async function restoreLast() {
+  if (!db) return;
+  try {
+    const last = await db.kv.get('last');
+    if (last) { applySnapshot(last.value); setView('behind'); }
+    await renderSaveList();
+  } catch (err) {
+    $('saveMsg').textContent = '保存データを読めません: ' + err.message;
+  }
+}
+
 function syncArrowUI() {
   document.querySelectorAll('input[name=acount], input[name=aheight]').forEach(el => { el.disabled = !state.arrowOn; });
 }
@@ -526,6 +766,7 @@ function resize() {
   outlineMat.resolution.set(w, h);
   gridMats.point.resolution.set(w, h);
   gridMats.half.resolution.set(w, h);
+  cbLineMat.resolution.set(w, h);
 }
 window.addEventListener('resize', resize);
 
@@ -533,6 +774,7 @@ resize();
 syncArrowUI();
 updateScene();
 setView('behind');
+restoreLast().finally(() => { restoring = false; });
 
 renderer.setAnimationLoop(() => {
   controls.update();
