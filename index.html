@@ -685,13 +685,15 @@ function updateScene() {
   disposeGroup(arrowGroup);
   arrowGroup.visible = state.arrowOn;
   if (state.arrowOn) {
-    const back = 4 * R, front = 14 * R;
-    const length = back + 2 * R + front;
+    const back = 4 * R;
     const y = state.arrowHeight === 'center' ? R : ARROW_TOP_Y;
     const perp = new THREE.Vector3(-dir.z, 0, dir.x);
     const offsets = state.arrowCount === 3 ? [0, -R, R] : [0];
     for (const off of offsets) {
       const kind = off === 0 ? 'center' : 'side';
+      // ゴースト中心の横位置から、クッション面（ポケットでは開口部）に達するまで
+      const front = rayToCushion(gp.x + perp.x * off, gp.z + perp.z * off, dir.x, dir.z).t;
+      const length = back + Math.max(front, 2 * R);
       const a = state.arrowStyle === 'wall' ? makeWall(length, y, kind) : makeArrow(length, arrowMats[kind]);
       a.position.copy(gp).addScaledVector(dir, -back).addScaledVector(perp, off);
       a.position.y = state.arrowStyle === 'wall' ? 0 : y;
