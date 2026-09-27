@@ -565,6 +565,19 @@ const groundContact = new THREE.Mesh(unitSphere, new THREE.MeshBasicMaterial({ c
 const ballContact = new THREE.Mesh(unitSphere, new THREE.MeshBasicMaterial({ color: 0x2f8bff }));
 scene.add(groundContact, ballContact);
 
+// 接地点を中心とした半径 R の円（ボールの占有範囲をラシャ面に投影）
+const groundRing = (() => {
+  const pts = [];
+  for (let i = 0; i <= 64; i++) {
+    const a = (i / 64) * Math.PI * 2;
+    pts.push(Math.cos(a) * R, 0.06, Math.sin(a) * R);
+  }
+  const g = new LineGeometry();
+  g.setPositions(pts);
+  return new Line2(g, outlineMat);
+})();
+scene.add(groundRing);
+
 // ---------- arrows ----------
 const arrowGroup = new THREE.Group();
 scene.add(arrowGroup);
@@ -685,13 +698,14 @@ function updateScene() {
   ghostMat.needsUpdate = true;
   ghost.castShadow = !t;
   ghost.renderOrder = t ? 2 : 0;
-  ghostCenter.visible = outline.visible = groundContact.visible = ballContact.visible = t;
+  ghostCenter.visible = outline.visible = groundContact.visible = ballContact.visible = groundRing.visible = t;
   ghost.visible = true;
 
   ghostCenter.position.copy(gp);
   const s = CONTACT_SIZES[state.contactSize];
   groundContact.scale.setScalar(s);
   groundContact.position.set(gp.x, 0, gp.z);
+  groundRing.position.set(gp.x, 0, gp.z);
   ballContact.scale.setScalar(s);
   ballContact.position.copy(gp).add(state.ob).multiplyScalar(0.5);
 
@@ -1470,7 +1484,7 @@ function startSim() {
   const res = runSimulation();
   if (!res) { ui.simInfo.textContent = '手球とゴーストボールが重なっていて撞けません'; return; }
   // 補助表示を隠す
-  [ghost, ghostCenter, outline, groundContact, ballContact, arrowGroup, cbLine, cbBackDot, cpLine, ...cpDots, triLine, triRight, triArc,
+  [ghost, ghostCenter, outline, groundContact, groundRing, ballContact, arrowGroup, cbLine, cbBackDot, cpLine, ...cpDots, triLine, triRight, triArc,
    tanLine, tanEnd, throwLine, compGhost, compAimLine].forEach(o => { o.visible = false; });
   triLabelVisible = false;
   const trails = [0, 1].map(i => {
