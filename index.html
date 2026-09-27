@@ -24,7 +24,9 @@
     padding: 10px 14px 14px; backdrop-filter: blur(6px);
   }
   #panel h1 { font-size: 15px; margin: 0; }
-  .head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .head { display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    position: sticky; top: -10px; z-index: 1; margin: -10px -14px 0; padding: 10px 14px 8px;
+    background: rgb(24, 27, 31); border-radius: 10px 10px 0 0; }
   #toggle { padding: 4px 10px; }
   #panel.collapsed { width: auto; }
   #panel.collapsed .body { display: none; }
