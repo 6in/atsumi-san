@@ -327,34 +327,91 @@ function buildTable() {
   box(TL + 2 * CUSHION_W, 2, TW + 2 * CUSHION_W, cloth, 0, -1, 0, { roughness: 0.95 });
   box(outerL, 18, outerW, wood, 0, -11, 0, { roughness: 0.6 });
 
-  // クッション（ポケット部分は切り欠き）
-  const gapC = GAP_C, gapS = GAP_S;
-  const segL = TL / 2 - gapC - gapS;
+  // クッション（ポケット側の端はジョーとして斜めにカット）
+  // ジョー角: コーナー 142°、サイド 104°（クッション面とジョー面のなす角）。
+  // クッション奥（レール側）での端のずれ = 奥行 / tan(180° − ジョー角)
+  const CW = CUSHION_W;
+  const cutC = CW / Math.tan(THREE.MathUtils.degToRad(180 - 142));
+  const cutS = CW / Math.tan(THREE.MathUtils.degToRad(180 - 104));
+  const cushionMat = new THREE.MeshStandardMaterial({ color: cushion, roughness: 0.8 });
+  // 上から見た (x, z) の多角形を高さ CUSHION_H の柱にする
+  const prism = pts => {
+    const shape = new THREE.Shape(pts.map(([x, z]) => new THREE.Vector2(x, -z)));
+    const geo = new THREE.ExtrudeGeometry(shape, { depth: CUSHION_H, bevelEnabled: false });
+    geo.rotateX(-Math.PI / 2);
+    const m = new THREE.Mesh(geo, cushionMat);
+    m.castShadow = m.receiveShadow = true;
+    scene.add(m);
+  };
   for (const sz of [-1, 1]) {
-    const z = sz * (TW / 2 + CUSHION_W / 2);
+    const zn = sz * TW / 2, zb = sz * (TW / 2 + CW);
     for (const sx of [-1, 1]) {
-      box(segL, CUSHION_H, CUSHION_W, cushion, sx * (gapS + segL / 2), CUSHION_H / 2, z, { cast: true });
+      prism([
+        [sx * GAP_S, zn], [sx * (TL / 2 - GAP_C), zn],
+        [sx * (TL / 2 - GAP_C + cutC), zb], [sx * (GAP_S - cutS), zb],
+      ]);
     }
   }
   for (const sx of [-1, 1]) {
-    box(CUSHION_W, CUSHION_H, TW - 2 * gapC, cushion, sx * (TL / 2 + CUSHION_W / 2), CUSHION_H / 2, 0, { cast: true });
+    const xn = sx * TL / 2, xb = sx * (TL / 2 + CW);
+    const zn = TW / 2 - GAP_C, zb = TW / 2 - GAP_C + cutC;
+    prism([[xn, -zn], [xn, zn], [xb, zb], [xb, -zb]]);
   }
 
-  // レール
+  // レール（ポケット部分を円弧でくり抜いた枠）とポケットの穴
   const rOff = CUSHION_W + RAIL_W / 2;
-  for (const s of [-1, 1]) {
-    box(outerL, RAIL_H, RAIL_W, wood, 0, RAIL_H / 2, s * (TW / 2 + rOff), { roughness: 0.6 });
-    box(RAIL_W, RAIL_H, TW + 2 * CUSHION_W, wood, s * (TL / 2 + rOff), RAIL_H / 2, 0, { roughness: 0.6 });
-  }
+  const X = TL / 2 + CW, Z = TW / 2 + CW;                   // クッション奥の線
+  const PC = { d: 3.4, r: 6.2 }, PS = { d: 4.2, r: 5.8 };   // 穴の中心の外側オフセットと半径
+  // 円弧: pIn → pOut を、中心から mid 方向を通る側で結ぶ
+  const arc = (cx, cz, r, pIn, pOut, midA, n = 24) => {
+    const a0 = Math.atan2(pIn[1] - cz, pIn[0] - cx), a1 = Math.atan2(pOut[1] - cz, pOut[0] - cx);
+    const TAU = Math.PI * 2, mod = v => ((v % TAU) + TAU) % TAU;
+    let span = mod(a1 - a0);
+    if (mod(midA - a0) > span) span -= TAU;
+    const pts = [];
+    for (let i = 0; i <= n; i++) {
+      const a = a0 + (span * i) / n;
+      pts.push([cx + Math.cos(a) * r, cz + Math.sin(a) * r]);
+    }
+    return pts;
+  };
+  const cornerArc = (sx, sz, horizontalFirst) => {
+    const c = TL / 2 + PC.d, cz = TW / 2 + PC.d, r = PC.r;
+    const pH = [sx * (c - Math.sqrt(r * r - (Z - cz) ** 2)), sz * Z];
+    const pV = [sx * X, sz * (cz - Math.sqrt(r * r - (X - c) ** 2))];
+    const [pIn, pOut] = horizontalFirst ? [pH, pV] : [pV, pH];
+    return arc(sx * c, sz * cz, r, pIn, pOut, Math.atan2(sz, sx));
+  };
+  const sideArc = (sz, leftToRight) => {
+    const cz = TW / 2 + PS.d, r = PS.r, w = Math.sqrt(r * r - (Z - cz) ** 2);
+    const [pIn, pOut] = leftToRight ? [[-w, sz * Z], [w, sz * Z]] : [[w, sz * Z], [-w, sz * Z]];
+    return arc(0, sz * cz, r, pIn, pOut, Math.atan2(sz, 0));
+  };
+  const inner = [
+    ...cornerArc(-1, -1, false), ...sideArc(-1, true), ...cornerArc(1, -1, true),
+    ...cornerArc(1, 1, false), ...sideArc(1, false), ...cornerArc(-1, 1, true),
+  ];
+  const OX = X + RAIL_W, OZ = Z + RAIL_W;
+  const railShape = new THREE.Shape([[-OX, -OZ], [OX, -OZ], [OX, OZ], [-OX, OZ]].map(([x, z]) => new THREE.Vector2(x, -z)));
+  railShape.holes.push(new THREE.Path(inner.map(([x, z]) => new THREE.Vector2(x, -z))));
+  const railGeo = new THREE.ExtrudeGeometry(railShape, { depth: RAIL_H, bevelEnabled: false, curveSegments: 1 });
+  railGeo.rotateX(-Math.PI / 2);
+  // グループ 0: 上下面（木）、1: 側面（ポケットの内壁は黒いライナー風）
+  const rail = new THREE.Mesh(railGeo, [
+    new THREE.MeshStandardMaterial({ color: wood, roughness: 0.6 }),
+    new THREE.MeshStandardMaterial({ color: 0x141210, roughness: 0.9 }),
+  ]);
+  rail.castShadow = rail.receiveShadow = true;
+  scene.add(rail);
 
-  // ポケット
+  // ポケットの穴: ラシャ面の高さまでの黒い円柱
   const pocketMat = new THREE.MeshBasicMaterial({ color: 0x050505 });
-  const pocketGeo = new THREE.CylinderGeometry(6.2, 6.2, RAIL_H + 0.4, 32);
+  const holeDepth = 10;
   for (const [px, pz] of POCKETS) {
-    const p = new THREE.Mesh(pocketGeo, pocketMat);
-    const push = 3;
-    p.position.set(px + Math.sign(px) * push, RAIL_H / 2 + 0.05, pz + Math.sign(pz) * push);
-    scene.add(p);
+    const side = px === 0, P = side ? PS : PC;
+    const hole = new THREE.Mesh(new THREE.CylinderGeometry(P.r, P.r, holeDepth, 40), pocketMat);
+    hole.position.set(side ? 0 : Math.sign(px) * (TL / 2 + P.d), 0.03 - holeDepth / 2, Math.sign(pz) * (TW / 2 + P.d));
+    scene.add(hole);
   }
 
   // ダイヤモンド
