@@ -1033,11 +1033,27 @@ document.querySelectorAll('input[name=aheight]').forEach(el =>
   el.addEventListener('change', () => { state.arrowHeight = el.value; updateScene(); }));
 document.querySelectorAll('input[name=grid]').forEach(el =>
   el.addEventListener('change', () => { state.grid = el.value; updateScene(); }));
-$('viewBehind').addEventListener('click', () => setView('behind'));
-$('viewCue').addEventListener('click', () => setView('cue'));
+$('viewBehind').addEventListener('click', () => {
+  state.cb.x = +ui.cbX.value; state.cb.z = +ui.cbZ.value;
+  state.ob.x = +ui.obX.value; state.ob.z = +ui.obZ.value;
+  setView('behind');
+});
+$('viewCue').addEventListener('click', () => {
+  state.cb.x = +ui.cbX.value; state.cb.z = +ui.cbZ.value;
+  state.ob.x = +ui.obX.value; state.ob.z = +ui.obZ.value;
+  setView('cue');
+});
 controls.addEventListener('change', () => scheduleAutosave());
-$('viewTop').addEventListener('click', () => setView('top'));
-$('viewSide').addEventListener('click', () => setView('side'));
+$('viewTop').addEventListener('click', () => {
+  state.cb.x = +ui.cbX.value; state.cb.z = +ui.cbZ.value;
+  state.ob.x = +ui.obX.value; state.ob.z = +ui.obZ.value;
+  setView('top');
+});
+$('viewSide').addEventListener('click', () => {
+  state.cb.x = +ui.cbX.value; state.cb.z = +ui.cbZ.value;
+  state.ob.x = +ui.obX.value; state.ob.z = +ui.obZ.value;
+  setView('side');
+});
 
 // ---------- drag ----------
 // ボール上で押したときだけドラッグ。OrbitControls より先に捕まえるため親要素の capture で受ける。
