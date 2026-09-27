@@ -18,20 +18,48 @@
     font: 14px/1.4 system-ui, -apple-system, "Segoe UI", "Hiragino Sans", sans-serif; }
   #view { position: fixed; inset: 0; touch-action: none; }
   #view canvas { display: block; }
-  #panel {
-    position: fixed; top: 12px; right: 12px; width: 320px; max-height: calc(100% - 24px);
-    overflow-y: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
-    padding: 10px 14px 14px; backdrop-filter: blur(6px);
+  /* 上部ツールバー: アイコン＋ラベルのボタン。タップでプルダウンメニュー */
+  #bar {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 20; display: flex; align-items: center; gap: 8px;
+    height: 60px; padding: 0 12px; padding-top: env(safe-area-inset-top);
+    background: rgba(20, 23, 27, 0.92); border-bottom: 1px solid var(--line); backdrop-filter: blur(6px);
   }
-  #panel h1 { font-size: 15px; margin: 0; }
-  .head { display: flex; align-items: center; justify-content: space-between; gap: 8px;
-    position: sticky; top: -10px; z-index: 1; margin: -10px -14px 0; padding: 10px 14px 8px;
-    background: rgb(24, 27, 31); border-radius: 10px 10px 0 0; }
-  #toggle { padding: 4px 10px; }
-  #panel.collapsed { width: auto; }
-  #panel.collapsed .body { display: none; }
-  section { border-top: 1px solid var(--line); margin-top: 10px; padding-top: 8px; }
-  section > h2 { font-size: 12px; color: var(--muted); margin: 0 0 6px; font-weight: 600; letter-spacing: .04em; }
+  #bar .brand { font-size: 15px; font-weight: 700; white-space: nowrap; margin-right: 4px; }
+  #bar .tools { display: flex; gap: 4px; flex: 1; min-width: 0; overflow-x: auto; scrollbar-width: none; }
+  #bar .tools::-webkit-scrollbar { display: none; }
+  .tool {
+    flex: 0 0 auto; width: 56px; height: 52px; padding: 4px 0 2px; border: 0; border-radius: 10px; background: transparent;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; color: var(--fg);
+  }
+  .tool svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+  .tool span { font-size: 11px; line-height: 1; color: var(--muted); }
+  .tool:hover { background: #262a2f; }
+  .tool[aria-expanded="true"] { background: #33291a; color: var(--accent); }
+  .tool[aria-expanded="true"] span { color: var(--accent); }
+  #bar .actions { display: flex; gap: 6px; }
+  #bar .actions button { height: 40px; padding: 0 14px; font-weight: 600; }
+  #simShot { background: var(--accent); color: #1b1e22; border-color: var(--accent); }
+  #simShot:active { background: #e08a10; }
+
+  /* プルダウンメニュー（1 つだけ開く。位置は JS でボタンの下に合わせる） */
+  .menu {
+    position: fixed; top: 64px; left: 12px; z-index: 21; width: 340px; max-width: calc(100vw - 16px);
+    max-height: calc(100vh - 80px); overflow-y: auto; padding: 6px 14px 12px;
+    background: rgba(24, 27, 31, 0.97); border: 1px solid var(--line); border-radius: 12px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+  }
+  .menu[hidden] { display: none; }
+  .menu h2 { font-size: 12px; color: var(--muted); margin: 10px 0 2px; font-weight: 600; letter-spacing: .04em; }
+  .menu .note { font-size: 12px; color: var(--muted); margin: 6px 0 0; }
+
+  /* 画面左下の数値表示 */
+  #hud {
+    position: fixed; left: 12px; bottom: 12px; z-index: 5; max-width: min(460px, calc(100vw - 24px));
+    display: grid; gap: 2px; padding: 8px 12px; pointer-events: none;
+    background: rgba(20, 23, 27, 0.78); border: 1px solid var(--line); border-radius: 10px;
+  }
+  #hud:not(:has(.stat:not(:empty))) { display: none; }
+  #hud .stat:empty { display: none; }
   .row { display: flex; align-items: center; gap: 8px; margin: 6px 0; }
   .row > label:first-child:not(.check) { flex: 0 0 64px; color: var(--muted); }
   .row input[type=range] { flex: 1; min-width: 0; accent-color: var(--accent); }
@@ -46,8 +74,16 @@
   .seg label:not(:first-of-type) { border-left: 1px solid var(--line); }
   .seg input:checked + label { background: var(--accent); color: #1b1e22; font-weight: 600; }
   .seg input:disabled + label { opacity: .4; cursor: default; }
-  .check { display: flex; align-items: center; gap: 8px; cursor: pointer; user-select: none; }
-  .check input { width: 18px; height: 18px; accent-color: var(--accent); }
+  /* ON/OFF はスイッチ。行全体がタップ対象 */
+  .check { flex: 1; display: flex; flex-direction: row-reverse; align-items: center; justify-content: space-between;
+    gap: 12px; min-height: 40px; cursor: pointer; user-select: none; }
+  .check input { appearance: none; -webkit-appearance: none; flex: 0 0 auto; position: relative; margin: 0;
+    width: 42px; height: 24px; border-radius: 12px; background: #3a3f45; cursor: pointer; transition: background .15s; }
+  .check input::before { content: ""; position: absolute; top: 3px; left: 3px; width: 18px; height: 18px;
+    border-radius: 50%; background: #d8dadc; transition: transform .15s; }
+  .check input:checked { background: var(--accent); }
+  .check input:checked::before { transform: translateX(18px); background: #fff; }
+  .check span small { display: block; font-size: 11px; color: var(--muted); margin-top: 1px; }
   button { background: #2a2e33; color: var(--fg); border: 1px solid var(--line); border-radius: 6px; padding: 6px 10px; cursor: pointer; font: inherit; }
   button:active { background: #3a3f45; }
   .btns { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
@@ -65,12 +101,11 @@
   #triLabel { position: fixed; left: 0; top: 0; pointer-events: none; transform: translate(-50%, -50%);
     background: rgba(10, 30, 40, 0.8); color: #7fdcff; border: 1px solid #4fd1ff; border-radius: 4px;
     padding: 1px 6px; font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
-  #err { position: fixed; left: 12px; bottom: 12px; color: #ff8080; }
+  #err { position: fixed; right: 12px; bottom: 12px; color: #ff8080; }
 
   @media (max-width: 640px) {
-    #panel { top: auto; bottom: 0; right: 0; left: 0; width: auto; max-height: 48%;
-      border-radius: 12px 12px 0 0; padding-bottom: calc(14px + env(safe-area-inset-bottom)); }
-    #panel.collapsed { max-height: none; }
+    #bar .brand { display: none; }
+    .menu { left: 8px !important; right: 8px; width: auto; }
   }
 </style>
 <script src="https://cdn.jsdelivr.net/npm/dexie@4.4.6/dist/dexie.min.js"></script>
@@ -86,15 +121,26 @@
   <div id="pocketLabels" style="position:fixed;inset:0;pointer-events:none;"></div>
 </div>
 
-<div id="panel">
-  <div class="head">
-    <h1>厚みさん３</h1>
-    <button id="toggle" type="button">閉じる</button>
+<header id="bar">
+  <div class="brand">厚みさん３</div>
+  <nav class="tools">
+    <button class="tool" type="button" data-menu="mBall" aria-expanded="false" aria-controls="mBall" title="配置"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="8.5" cy="14.5" r="5"/><circle cx="16" cy="8.5" r="4.5"/></svg><span>配置</span></button>
+    <button class="tool" type="button" data-menu="mGuide" aria-expanded="false" aria-controls="mGuide" title="ガイド"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="18" r="3"/><path d="M8.5 15.5 21 3" stroke-dasharray="2.5 2.5"/><path d="M3 9h7"/></svg><span>ガイド</span></button>
+    <button class="tool" type="button" data-menu="mThick" aria-expanded="false" aria-controls="mThick" title="厚み"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M14 3.7a8.5 8.5 0 0 1 0 16.6z" fill="currentColor"/></svg><span>厚み</span></button>
+    <button class="tool" type="button" data-menu="mArrow" aria-expanded="false" aria-controls="mArrow" title="矢印"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h16M14 6.5 19.5 12 14 17.5"/></svg><span>矢印</span></button>
+    <button class="tool" type="button" data-menu="mShot" aria-expanded="false" aria-controls="mShot" title="ショット"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 21 13.5 10.5"/><circle cx="17" cy="7" r="3.5"/><path d="M15 2.5l1 1.5M21.5 9l-1.5-.8"/></svg><span>ショット</span></button>
+    <button class="tool" type="button" data-menu="mView" aria-expanded="false" aria-controls="mView" title="視点"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.6-6.5 10-6.5S22 12 22 12s-3.6 6.5-10 6.5S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg><span>視点</span></button>
+    <button class="tool" type="button" data-menu="mSave" aria-expanded="false" aria-controls="mSave" title="保存"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 3.5h11v17l-5.5-3.8-5.5 3.8z"/></svg><span>保存</span></button>
+  </nav>
+  <div class="actions">
+    <button id="simShot" type="button">ショット</button>
+    <button id="simReset" type="button">リセット</button>
   </div>
-  <div class="body">
-    <section>
-      <h2>配置</h2>
-      <div class="row"><label for="obNum">的球</label>
+</header>
+
+<div class="menu" id="mBall" hidden>
+  <h2>的球と狙い</h2>
+  <div class="row"><label for="obNum">的球</label>
         <select id="obNum">
           <option value="1">1（黄）</option><option value="2">2（青）</option><option value="3">3（赤）</option>
           <option value="4">4（紫）</option><option value="5">5（橙）</option><option value="6">6（緑）</option>
@@ -105,7 +151,7 @@
           <option value="15">15（えんじストライプ）</option>
         </select>
       </div>
-      <div class="row"><label for="aim">向き先</label>
+  <div class="row"><label for="aim">向き先</label>
         <select id="aim">
           <option value="manual">手動（角度）</option>
           <option value="0">A（左上コーナー）</option>
@@ -116,128 +162,118 @@
           <option value="5">F（右下コーナー）</option>
         </select>
       </div>
-      <div class="row"><label class="check"><input id="aimCushion" type="checkbox" checked>クッションを考慮して狙う</label></div>
-      <div class="row tight"><label for="ang">角度</label><button class="step" id="angDec" type="button" aria-label="0.01°減らす">−</button><input id="ang" type="range" min="0" max="359.99" step="0.01" value="0"><button class="step" id="angInc" type="button" aria-label="0.01°増やす">＋</button><output id="angv"></output></div>
-    </section>
+  <div class="row"><label class="check"><input id="aimCushion" type="checkbox" checked><span>クッションを考慮して狙う<small>ポケット入口のジョーに当てない狙い点</small></span></label></div>
+  <div class="row tight"><label for="ang">角度</label><button class="step" id="angDec" type="button" aria-label="0.01°減らす">−</button><input id="ang" type="range" min="0" max="359.99" step="0.01" value="0"><button class="step" id="angInc" type="button" aria-label="0.01°増やす">＋</button><output id="angv"></output></div>
+  <p class="note">ボールは台上でドラッグして動かします</p>
+</div>
 
-    <section>
-      <h2>キューボール</h2>
-      <div class="row"><label class="check"><input id="cbLine" type="checkbox" checked>手球→ゴーストのライン</label></div>
-      <div class="row"><label class="check"><input id="cpLine" type="checkbox">接点ガイドライン（手球の接点→的球との接点）</label></div>
-      <div class="row"><label class="check"><input id="thickOn" type="checkbox">厚みで手球を縦割り（縁〜接点ラインの幅×2）</label></div>
-      <div class="row"><label class="check"><input id="thickWallOn" type="checkbox">厚みの壁（縦割り面を手球〜ゴーストに通す）</label></div>
-      <div class="row"><label class="check"><input id="triOn" type="checkbox">直角三角形（的球ライン延長への垂線）</label></div>
-      <div class="stat" id="cutInfo"></div>
-      <div class="stat" id="triInfo"></div>
-      <div class="row"><label class="check"><input id="tanOn" type="checkbox">タンジェントライン（ゴースト中心・クッション反射付き）</label></div>
-      <div class="stat" id="tanInfo"></div>
-      <div class="stat">ボールは台上でドラッグしても動かせます</div>
-    </section>
-
-    <section>
-      <h2>ショット設定・スロウ</h2>
-      <div class="row"><label class="check"><input id="throwOn" type="checkbox">スロウを表示（実際の的球ライン・補正ゴースト）</label></div>
-      <div class="row"><label>手球の速さ</label>
-        <div class="seg">
-          <input type="radio" name="tspeed" id="ts0" value="0"><label for="ts0">遅い</label>
-          <input type="radio" name="tspeed" id="ts1" value="1" checked><label for="ts1">中</label>
-          <input type="radio" name="tspeed" id="ts2" value="2"><label for="ts2">速い</label>
-        </div>
-      </div>
-      <div class="row"><label for="tFollow">縦回転</label><input id="tFollow" type="range" min="-1" max="1" step="0.25" value="0"><output id="tFollowv"></output></div>
-      <div class="row"><label for="tSide">横回転</label><input id="tSide" type="range" min="-1" max="1" step="0.25" value="0"><output id="tSidev"></output></div>
-      <div class="stat" id="throwInfo"></div>
-      <div class="legend">
-        <span><span class="dot" style="background:#ff5a5a"></span>実際の的球ライン</span>
-        <span><span class="dot" style="background:#55ccff"></span>補正ゴースト</span>
-      </div>
-    </section>
-
-    <section>
-      <h2>シミュレーション</h2>
-      <div class="btns">
-        <button id="simShot" type="button">ショット</button>
-        <button id="simReset" type="button">リセット</button>
-      </div>
-      <div class="row"><label class="check"><input id="simLoop" type="checkbox">ループ再生</label></div>
-      <div class="row"><label class="check"><input id="simPause" type="checkbox" checked>衝突時に 0.5 秒停止</label></div>
-      <div class="row"><label>再生速度</label>
-        <div class="seg">
-          <input type="radio" name="simRate" id="sr0" value="1" checked><label for="sr0">1x</label>
-          <input type="radio" name="simRate" id="sr1" value="0.5"><label for="sr1">0.5x</label>
-        </div>
-      </div>
-      <div class="stat" id="simInfo">上の速さ・回転で、手球をゴーストボールに向けて撞きます</div>
-    </section>
-
-    <section>
-      <h2>ゴーストボール</h2>
-      <div class="row"><label class="check"><input id="transparent" type="checkbox">透明表示</label></div>
-      <div class="row"><label>接点サイズ</label>
-        <div class="seg">
-          <input type="radio" name="csize" id="cs0" value="0"><label for="cs0">小</label>
-          <input type="radio" name="csize" id="cs1" value="1" checked><label for="cs1">中</label>
-          <input type="radio" name="csize" id="cs2" value="2"><label for="cs2">大</label>
-        </div>
-      </div>
-      <div class="legend">
-        <span><span class="dot" style="background:#ff3b4e"></span>地面接点</span>
-        <span><span class="dot" style="background:#2f8bff"></span>的球接点</span>
-        <span><span class="dot" style="background:#111;border:1px solid #888"></span>中心</span>
-      </div>
-    </section>
-
-    <section>
-      <h2>矢印</h2>
-      <div class="row"><label class="check"><input id="arrowOn" type="checkbox" checked>表示</label></div>
-      <div class="row"><label>本数</label>
-        <div class="seg">
-          <input type="radio" name="acount" id="ac1" value="1" checked><label for="ac1">1本（中心）</label>
-          <input type="radio" name="acount" id="ac3" value="3"><label for="ac3">3本（中心＋縁）</label>
-        </div>
-      </div>
-      <div class="row"><label>形状</label>
-        <div class="seg">
-          <input type="radio" name="astyle" id="as0" value="line" checked><label for="as0">線</label>
-          <input type="radio" name="astyle" id="as1" value="wall"><label for="as1">薄い壁</label>
-        </div>
-      </div>
-      <div class="row"><label>高さ</label>
-        <div class="seg">
-          <input type="radio" name="aheight" id="ah0" value="center" checked><label for="ah0">中心</label>
-          <input type="radio" name="aheight" id="ah1" value="top"><label for="ah1">ボールの高さ</label>
-        </div>
-      </div>
-    </section>
-
-    <section>
-      <h2>グリッド（ポイント）</h2>
-      <div class="row"><label>表示</label>
+<div class="menu" id="mGuide" hidden>
+  <h2>ライン</h2>
+  <div class="row"><label class="check"><input id="cbLine" type="checkbox" checked><span>手球→ゴーストのライン<small>手球を貫いて後方へ延長</small></span></label></div>
+  <div class="row"><label class="check"><input id="cpLine" type="checkbox"><span>接点ガイドライン<small>手球の接点 → 的球との接点</small></span></label></div>
+  <div class="row"><label class="check"><input id="triOn" type="checkbox"><span>直角三角形<small>的球ライン延長への垂線と角度</small></span></label></div>
+  <div class="row"><label class="check"><input id="tanOn" type="checkbox"><span>タンジェントライン<small>手球の分離方向（クッション反射付き）</small></span></label></div>
+  <h2>台</h2>
+  <div class="row"><label>グリッド</label>
         <div class="seg">
           <input type="radio" name="grid" id="gr0" value="off" checked><label for="gr0">なし</label>
           <input type="radio" name="grid" id="gr1" value="point"><label for="gr1">ポイント</label>
           <input type="radio" name="grid" id="gr2" value="half"><label for="gr2">＋ハーフ</label>
         </div>
       </div>
-    </section>
+</div>
 
-    <section>
-      <h2>保存</h2>
-      <div class="row"><input id="saveName" type="text" maxlength="40" placeholder="配置名（同名は上書き）"><button id="saveBtn" type="button">保存</button></div>
-      <ul id="saveList"></ul>
-      <p id="saveMsg"></p>
-    </section>
+<div class="menu" id="mThick" hidden>
+  <h2>厚み</h2>
+  <div class="row"><label class="check"><input id="thickOn" type="checkbox"><span>縦割り（手球・ゴースト）<small>縁〜接点ラインの幅×2 ＝ 厚み</small></span></label></div>
+  <div class="row"><label class="check"><input id="thickWallOn" type="checkbox"><span>厚みの壁<small>縦割り面を手球〜ゴーストに通す</small></span></label></div>
+  <h2>ゴーストボール</h2>
+  <div class="row"><label class="check"><input id="transparent" type="checkbox"><span>透明表示<small>輪郭・中心・接点を表示</small></span></label></div>
+  <div class="row"><label>接点</label>
+        <div class="seg">
+          <input type="radio" name="csize" id="cs0" value="0"><label for="cs0">小</label>
+          <input type="radio" name="csize" id="cs1" value="1" checked><label for="cs1">中</label>
+          <input type="radio" name="csize" id="cs2" value="2"><label for="cs2">大</label>
+        </div>
+      </div>
+  <div class="legend">
+        <span><span class="dot" style="background:#ff3b4e"></span>地面接点</span>
+        <span><span class="dot" style="background:#2f8bff"></span>的球接点</span>
+        <span><span class="dot" style="background:#111;border:1px solid #888"></span>中心</span>
+      </div>
+</div>
 
-    <section>
-      <h2>視点</h2>
-      <div class="btns">
+<div class="menu" id="mArrow" hidden>
+  <div class="row"><label class="check"><input id="arrowOn" type="checkbox" checked>矢印を表示</label></div>
+  <div class="row"><label>本数</label>
+        <div class="seg">
+          <input type="radio" name="acount" id="ac1" value="1" checked><label for="ac1">1本（中心）</label>
+          <input type="radio" name="acount" id="ac3" value="3"><label for="ac3">3本（中心＋縁）</label>
+        </div>
+      </div>
+  <div class="row"><label>形状</label>
+        <div class="seg">
+          <input type="radio" name="astyle" id="as0" value="line" checked><label for="as0">線</label>
+          <input type="radio" name="astyle" id="as1" value="wall"><label for="as1">薄い壁</label>
+        </div>
+      </div>
+  <div class="row"><label>高さ</label>
+        <div class="seg">
+          <input type="radio" name="aheight" id="ah0" value="center" checked><label for="ah0">中心</label>
+          <input type="radio" name="aheight" id="ah1" value="top"><label for="ah1">ボールの高さ</label>
+        </div>
+      </div>
+</div>
+
+<div class="menu" id="mShot" hidden>
+  <h2>撞き方</h2>
+  <div class="row"><label>速さ</label>
+        <div class="seg">
+          <input type="radio" name="tspeed" id="ts0" value="0"><label for="ts0">遅い</label>
+          <input type="radio" name="tspeed" id="ts1" value="1" checked><label for="ts1">中</label>
+          <input type="radio" name="tspeed" id="ts2" value="2"><label for="ts2">速い</label>
+        </div>
+      </div>
+  <div class="row"><label for="tFollow">縦回転</label><input id="tFollow" type="range" min="-1" max="1" step="0.25" value="0"><output id="tFollowv"></output></div>
+  <div class="row"><label for="tSide">横回転</label><input id="tSide" type="range" min="-1" max="1" step="0.25" value="0"><output id="tSidev"></output></div>
+  <h2>スロウ</h2>
+  <div class="row"><label class="check"><input id="throwOn" type="checkbox"><span>スロウを表示<small>実際の的球ラインと補正ゴースト</small></span></label></div>
+  <div class="legend">
+        <span><span class="dot" style="background:#ff5a5a"></span>実際の的球ライン</span>
+        <span><span class="dot" style="background:#55ccff"></span>補正ゴースト</span>
+      </div>
+  <h2>再生</h2>
+  <div class="row"><label class="check"><input id="simLoop" type="checkbox">ループ再生</label></div>
+  <div class="row"><label class="check"><input id="simPause" type="checkbox" checked><span>衝突時に 0.5 秒停止</span></label></div>
+  <div class="row"><label>再生速度</label>
+        <div class="seg">
+          <input type="radio" name="simRate" id="sr0" value="1" checked><label for="sr0">1x</label>
+          <input type="radio" name="simRate" id="sr1" value="0.5"><label for="sr1">0.5x</label>
+        </div>
+      </div>
+</div>
+
+<div class="menu" id="mView" hidden>
+  <div class="btns">
         <button id="viewCue" type="button">手球の真後ろ</button>
         <button id="viewBehind" type="button">ゴースト後方</button>
         <button id="viewTop" type="button">真上</button>
         <button id="viewSide" type="button">真横</button>
       </div>
-    </section>
-  </div>
+</div>
+
+<div class="menu" id="mSave" hidden>
+  <div class="row"><input id="saveName" type="text" maxlength="40" placeholder="配置名（同名は上書き）"><button id="saveBtn" type="button">保存</button></div>
+      <ul id="saveList"></ul>
+      <p id="saveMsg"></p>
+</div>
+
+<div id="hud">
+  <div class="stat" id="cutInfo"></div>
+  <div class="stat" id="triInfo"></div>
+  <div class="stat" id="tanInfo"></div>
+  <div class="stat" id="throwInfo"></div>
+  <div class="stat" id="simInfo"></div>
 </div>
 <div id="triLabel" hidden></div>
 <div id="err"></div>
@@ -1764,11 +1800,34 @@ $('simReset').addEventListener('click', () => { updateScene(); ui.simInfo.textCo
 $('simLoop').addEventListener('change', e => { state.simLoop = e.target.checked; scheduleAutosave(); });
 $('simPause').addEventListener('change', e => { state.simPause = e.target.checked; scheduleAutosave(); });
 
-const panel = $('panel');
-$('toggle').addEventListener('click', () => {
-  panel.classList.toggle('collapsed');
-  $('toggle').textContent = panel.classList.contains('collapsed') ? '設定' : '閉じる';
+// ツールバーのプルダウン。1 つだけ開き、外側タップ・Esc・同じボタンで閉じる
+const tools = [...document.querySelectorAll('.tool')];
+let openMenu = null;
+function closeMenu() {
+  if (!openMenu) return;
+  openMenu.menu.hidden = true;
+  openMenu.btn.setAttribute('aria-expanded', 'false');
+  openMenu = null;
+}
+function showMenu(btn) {
+  const menu = $(btn.dataset.menu);
+  closeMenu();
+  menu.hidden = false;
+  btn.setAttribute('aria-expanded', 'true');
+  const r = btn.getBoundingClientRect();
+  const left = Math.max(8, Math.min(r.left, window.innerWidth - menu.offsetWidth - 8));
+  menu.style.left = `${left}px`;
+  menu.style.top = `${r.bottom + 6}px`;
+  openMenu = { btn, menu };
+}
+tools.forEach(btn => btn.addEventListener('click', () => {
+  if (openMenu && openMenu.btn === btn) closeMenu(); else showMenu(btn);
+}));
+document.addEventListener('pointerdown', e => {
+  if (openMenu && !openMenu.menu.contains(e.target) && !e.target.closest('.tool')) closeMenu();
 });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeMenu(); });
+window.addEventListener('resize', closeMenu);
 
 function resize() {
   const w = window.innerWidth, h = window.innerHeight;
