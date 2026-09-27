@@ -1,7 +1,10 @@
 # CLAUDE.md
 
-厚みさん３ — ビリヤードの厚み（ゴーストボール）練習用 3D ツール。`index.html` 1 ファイルのみ（HTML/CSS/JS 同梱、ビルドなし）。
-GitHub Pages（main / root）で https://6in.github.io/atsumi-san/ に公開。
+厚みさん３ — ビリヤードの厚み（ゴーストボール）練習用 3D ツール。Vite でビルド（`index.html` = HTML/CSS、`src/main.js` = JS）。
+GitHub Pages で https://6in.github.io/atsumi-san/ に公開。main への push で `.github/workflows/pages.yml` が `dist/` をデプロイ
+（Settings → Pages → Source は「GitHub Actions」）。`vite.config.js` は `base: './'`（Pages のサブパスと Capacitor の両方に対応）。
+
+- `npm run dev` / `npm run build`（→ `dist/`）/ `npm run preview`
 
 ## 利用者について
 
@@ -10,12 +13,12 @@ GitHub Pages（main / root）で https://6in.github.io/atsumi-san/ に公開。
 
 ## 技術構成
 
-- Three.js r160（importmap で CDN: cdn.jsdelivr.net）、OrbitControls、Line2/LineMaterial/LineGeometry
-- Dexie.js 4.4.6（CDN）。DB 名 `ghostBallTrainer`、`layouts`（名前付き保存）と `kv`（`last` に自動保存）
+- Three.js r160（npm、`three/addons/...` で import）、OrbitControls、Line2/LineMaterial/LineGeometry
+- Dexie.js 4.4.6（npm）。DB 名 `ghostBallTrainer`、`layouts`（名前付き保存）と `kv`（`last` に自動保存）
 - 単位は **cm**（シミュレーションだけ m）。y が上、ラシャ面が y=0、X が台の長辺（TL=254）、Z が短辺（TW=127）。
 - ポケット `POCKETS[0..5]` = A〜F。真上視点で A 左上 / B 上サイド / C 右上 / D 左下 / E 下サイド / F 右下（−Z が画面上）。
 
-## index.html の構成（`// ---------- xxx ----------` で区切り）
+## index.html / src/main.js の構成（JS は `// ---------- xxx ----------` で区切り）
 
 - HTML: 上部ツールバー `#bar`（`.tool` ボタン → プルダウン `.menu#mBall/mGuide/mThick/mArrow/mShot/mView/mSave`）、
   ショット/停止 `#actions`（`#bar` の外。`#bar` の backdrop-filter が fixed の基準になるため）、左下の数値表示 `#hud`。
@@ -33,37 +36,33 @@ GitHub Pages（main / root）で https://6in.github.io/atsumi-san/ に公開。
 - persistence: `snapshot()` / `applySnapshot()`（旧形式の読み替えもここ）/ `scheduleAutosave()`（400ms 間引き）。
 - simulation: 2D 剛体（dt 0.5ms、最大 20 秒）。`runSimulation()` が位置と姿勢クォータニオン（角速度を積分）を記録し、
   `tickSim()` が補間再生。最初の衝突時刻 `events.firstHit` で 0.5 秒停止（オプション）。速さは 1〜10 段階 × 0.5 m/s。
-- 末尾の classic script: `setPointerCapture` の NotFoundError を無視するラッパーと、エラー表示（読み込み失敗は常時、実行時エラーは 6 秒で消す）。
+- `index.html` 末尾の classic script: `setPointerCapture` の NotFoundError を無視するラッパーと、エラー表示（読み込み失敗は常時、実行時エラーは 6 秒で消す）。
 
 ## 動作確認
 
-コンテナのヘッドレス Chromium は CDN に届かないので、npm で入れた three/dexie にルーティングする。
+`npm run build` 後に `npx vite preview --port 4173` で `dist/` を配信し、Playwright で開く（CDN 依存はないのでルーティング不要）。
 
 ```js
-// scratchpad で: npm i playwright@1 three@0.160.0 dexie@4.4.6
+// scratchpad で: npm i playwright@1
 import { chromium } from 'playwright';
 const b = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium', args: ['--use-gl=swiftshader', '--enable-unsafe-swiftshader'] });
 const p = await b.newPage({ viewport: { width: 1280, height: 800 } });
-await p.route(/cdn\.jsdelivr\.net\/npm\/(three|dexie)@[^/]+\/(.*)/, r => {
-  const m = r.request().url().match(/npm\/(three|dexie)@[^/]+\/(.*)/);
-  r.fulfill({ path: `node_modules/${m[1]}/${m[2]}`, contentType: 'application/javascript' });
-});
 p.on('pageerror', e => console.log('pageerror', e.message));
-await p.goto('file:///home/user/atsumi-san/index.html');
+await p.goto('http://localhost:4173/');
 ```
 
-- 内部状態を触りたいときは、コピーした HTML の `renderer.setAnimationLoop(` の直前に
-  `Object.assign(window, { __cam: camera, __ctl: controls, __state: state, __update: updateScene });` を差し込む。
+- 内部状態を触りたいときは、`src/main.js` の `renderer.setAnimationLoop(` の直前に一時的に
+  `Object.assign(window, { __cam: camera, __ctl: controls, __state: state, __update: updateScene });` を差し込む（コミットしない）。
 - PC（1280×800）とスマホ（390×844、360×740、横 844×390、`hasTouch/isMobile`）で確認する。
 - UI の変更はスクリーンショットで目視確認してから報告する。
 
 ## Artifact
 
 公開中: https://claude.ai/artifact/QKrF6MBY5uP7hAAUDfu6fH
-更新は `index.html` を scratchpad にコピーし、Artifact ツールで `url` にこの URL を渡して publish（別会話からは先に read が必要）。
+更新は `npm run build` 後、`dist/index.html` を page、`dist/assets/*` を `files`（公開パス `assets/xxx.js`）として、Artifact ツールで `url` にこの URL を渡して publish（別会話からは先に read が必要）。古いハッシュ名のファイルは `null` で消す。
 
 ## 検討中の課題
 
 - VR 対応（WebXR）: three.js の `renderer.xr` + VRButton。シーンを 1/100 して実物大、台の高さ約 80cm。
   VR 中は HTML メニューが出ないので、まずは「見る＋ショット」のみ。Artifact の埋め込みでは XR が許可されない可能性があり、Pages で試す。
-- アプリ化（Capacitor）: CDN 依存（three/dexie）を同梱してオフライン起動にする必要あり。
+- アプリ化（Capacitor）: Vite 導入済み（three/dexie は同梱）。次は `src/main.js` のファイル分割、その後 Capacitor で iOS/Android。
