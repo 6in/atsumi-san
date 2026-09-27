@@ -112,6 +112,7 @@
       <div class="row"><label for="cbZ">手球 Y</label><input id="cbZ" type="range" min="-60" max="60" step="0.5" value="20"><output id="cbZv"></output></div>
       <div class="row"><label class="check"><input id="cbLine" type="checkbox" checked>手球→ゴーストのライン</label></div>
       <div class="row"><label class="check"><input id="cpLine" type="checkbox">接点ガイドライン（手球の接点→的球との接点）</label></div>
+      <div class="row"><label class="check"><input id="thickOn" type="checkbox">厚みサークル（手球の縁〜接点ラインの幅×2）</label></div>
       <div class="row"><label class="check"><input id="triOn" type="checkbox">直角三角形（的球ライン延長への垂線）</label></div>
       <div class="stat" id="cutInfo"></div>
       <div class="stat" id="triInfo"></div>
@@ -258,6 +259,7 @@ const state = {
   cb: new THREE.Vector3(-50, R, 20),
   cbLine: true,
   cpLine: false,
+  thickOn: false,
   triOn: false,
   tanOn: false,
   throwOn: false,
@@ -500,6 +502,21 @@ const cpDotGeo = new THREE.SphereGeometry(1, 16, 12);
 const cpDotMat = new THREE.MeshBasicMaterial({ color: 0x7dff6b });
 const cpDots = [0, 1, 2].map(() => new THREE.Mesh(cpDotGeo, cpDotMat));
 scene.add(cpLine, ...cpDots);
+
+// 厚みサークル: 手球の背面に立てた円。半径 = 手球の縁から接点ラインまでの幅 w、直径 2w = 厚み
+const thickCircle = new THREE.Group();
+thickCircle.add(
+  new THREE.Mesh(new THREE.CircleGeometry(1, 48),
+    new THREE.MeshBasicMaterial({ color: 0x7dff6b, transparent: true, opacity: 0.3, side: THREE.DoubleSide, depthWrite: false })),
+  (() => {
+    const pts = [];
+    for (let i = 0; i <= 64; i++) { const a = (i / 64) * Math.PI * 2; pts.push(Math.cos(a), Math.sin(a), 0); }
+    const g = new LineGeometry();
+    g.setPositions(pts);
+    return new Line2(g, cpLineMat);
+  })(),
+);
+scene.add(thickCircle);
 
 // 直角三角形: G(ゴースト中心) - F(手球から的球ライン延長への垂線の足) - C(手球中心)。ラシャ面上に描く。
 const TRI_Y = 0.05, ARC_N = 32;
@@ -746,6 +763,16 @@ function updateScene() {
     const tail = cbBackDot.position.clone().addScaledVector(cue, -PIERCE_TAIL);
     cbLine.geometry.setPositions([tail.x, R, tail.z, gp.x, R, gp.z]);
     cbLine.computeLineDistances();
+  }
+  // 手球後方から見た接点ラインの横ずれ R·sinθ と、縁までの幅 w = R(1 − sinθ)
+  const along = hasCue ? dir.dot(cue) : 0;
+  const lateral = dir.clone().addScaledVector(cue, -along);
+  thickCircle.visible = state.thickOn && hasCue && along > 1e-6;
+  if (thickCircle.visible) {
+    const w = R * (1 - lateral.length());
+    thickCircle.position.copy(state.cb).addScaledVector(lateral, R).addScaledVector(cue, -(R + 0.3));
+    thickCircle.lookAt(thickCircle.position.clone().sub(cue));
+    thickCircle.scale.setScalar(Math.max(w, 1e-3));
   }
   const cpOn = state.cpLine && hasCue;
   cpLine.visible = cpOn;
@@ -1064,6 +1091,7 @@ ui.cbZ.addEventListener('input', () => { state.cb.z = +ui.cbZ.value; updateScene
 $('aimCushion').addEventListener('change', e => { state.aimCushion = e.target.checked; updateScene(); });
 $('cbLine').addEventListener('change', e => { state.cbLine = e.target.checked; updateScene(); });
 $('cpLine').addEventListener('change', e => { state.cpLine = e.target.checked; updateScene(); });
+$('thickOn').addEventListener('change', e => { state.thickOn = e.target.checked; updateScene(); });
 $('triOn').addEventListener('change', e => { state.triOn = e.target.checked; updateScene(); });
 $('tanOn').addEventListener('change', e => { state.tanOn = e.target.checked; updateScene(); });
 $('throwOn').addEventListener('change', e => { state.throwOn = e.target.checked; updateScene(); });
@@ -1157,7 +1185,7 @@ container.addEventListener('pointerup', endDrag);
 container.addEventListener('pointercancel', endDrag);
 
 // ---------- persistence (Dexie / IndexedDB) ----------
-const SNAPSHOT_KEYS = ['aim', 'angle', 'transparent', 'contactSize', 'arrowOn', 'arrowCount', 'arrowHeight', 'arrowStyle', 'aimCushion', 'grid', 'cbLine', 'cpLine', 'triOn', 'tanOn', 'throwOn', 'throwSpeed', 'throwFollow', 'throwSide', 'simLoop', 'simPause'];
+const SNAPSHOT_KEYS = ['aim', 'angle', 'transparent', 'contactSize', 'arrowOn', 'arrowCount', 'arrowHeight', 'arrowStyle', 'aimCushion', 'grid', 'cbLine', 'cpLine', 'thickOn', 'triOn', 'tanOn', 'throwOn', 'throwSpeed', 'throwFollow', 'throwSide', 'simLoop', 'simPause'];
 
 function snapshot() {
   const o = { ob: { x: state.ob.x, z: state.ob.z }, cb: { x: state.cb.x, z: state.cb.z } };
@@ -1195,6 +1223,7 @@ function syncUI() {
   ui.aim.value = state.aim; ui.ang.value = state.angle;
   $('cbLine').checked = state.cbLine;
   $('cpLine').checked = state.cpLine;
+  $('thickOn').checked = state.thickOn;
   $('aimCushion').checked = state.aimCushion;
   $('triOn').checked = state.triOn;
   $('tanOn').checked = state.tanOn;
@@ -1484,7 +1513,7 @@ function startSim() {
   const res = runSimulation();
   if (!res) { ui.simInfo.textContent = '手球とゴーストボールが重なっていて撞けません'; return; }
   // 補助表示を隠す
-  [ghost, ghostCenter, outline, groundContact, groundRing, ballContact, arrowGroup, cbLine, cbBackDot, cpLine, ...cpDots, triLine, triRight, triArc,
+  [ghost, ghostCenter, outline, groundContact, groundRing, ballContact, arrowGroup, cbLine, cbBackDot, cpLine, ...cpDots, thickCircle, triLine, triRight, triArc,
    tanLine, tanEnd, throwLine, compGhost, compAimLine].forEach(o => { o.visible = false; });
   triLabelVisible = false;
   const trails = [0, 1].map(i => {
