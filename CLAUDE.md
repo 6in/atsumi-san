@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-厚みさん３ — ビリヤードの厚み（ゴーストボール）練習用 3D ツール。Vite でビルド（`index.html` = HTML/CSS、`src/main.js` = JS）。
+厚みさん３ — ビリヤードの厚み（ゴーストボール）練習用 3D ツール。Vite でビルド（`index.html` = HTML/CSS、`src/*.js` = ES modules）。
 GitHub Pages で https://6in.github.io/atsumi-san/ に公開。main への push で `.github/workflows/pages.yml` が `dist/` をデプロイ
 （Settings → Pages → Source は「GitHub Actions」）。`vite.config.js` は `base: './'`（Pages のサブパスと Capacitor の両方に対応）。
 
@@ -18,25 +18,37 @@ GitHub Pages で https://6in.github.io/atsumi-san/ に公開。main への push 
 - 単位は **cm**（シミュレーションだけ m）。y が上、ラシャ面が y=0、X が台の長辺（TL=254）、Z が短辺（TW=127）。
 - ポケット `POCKETS[0..5]` = A〜F。真上視点で A 左上 / B 上サイド / C 右上 / D 左下 / E 下サイド / F 右下（−Z が画面上）。
 
-## index.html / src/main.js の構成（JS は `// ---------- xxx ----------` で区切り）
+## 構成
 
-- HTML: 上部ツールバー `#bar`（`.tool` ボタン → プルダウン `.menu#mBall/mGuide/mThick/mArrow/mShot/mView/mSave`）、
+- `index.html`: 上部ツールバー `#bar`（`.tool` ボタン → プルダウン `.menu#mBall/mGuide/mThick/mArrow/mShot/mView/mSave`）、
   ショット/停止 `#actions`（`#bar` の外。`#bar` の backdrop-filter が fixed の基準になるため）、左下の数値表示 `#hud`。
   コントロールは ID でイベントを結んでいるので、配置を変えても ID は維持する。
-- 定数: 球半径 `R`、台寸法、クッション/ジョー角（コーナー 142°、サイド 104°）、ポケット穴 `PC`/`PS`。
+  末尾の classic script: `setPointerCapture` の NotFoundError を無視するラッパーと、エラー表示（読み込み失敗は常時、実行時エラーは 6 秒で消す）。
+
+`src/`（3D オブジェクトと DOM 要素は import 時に生成、イベント登録は `init*()` を `main.js` から呼ぶ。
+モジュールは循環 import しているので、他モジュールの `const` をトップレベルで参照しない。別モジュールから書き換える値はオブジェクトか関数で渡す）
+
+- `main.js`: 初期化順序、`resize()`（LineMaterial の resolution 更新。Line 系マテリアルを足したらここにも追加）、描画ループ。
+- `constants.js`: 球半径 `R`、台寸法、クッション/ジョー角（コーナー 142°、サイド 104°）、ポケット穴 `PC`/`PS`。
   切り欠き `GAP_C`/`GAP_S` は「台形クッションの奥の角がポケット穴の外周に接する」長さとして算出し、狙い点とシミュレーションも同じ値を使う。
-- `state`: 全設定。永続化対象は `SNAPSHOT_KEYS`。新しい設定を足すときは state・SNAPSHOT_KEYS・`syncUI()`・イベントの 4 か所。
-- table / grid / balls: `buildTable()`、`makeBallTexture()`（UV の各画素を球面方向に戻して模様を描く。1〜15 番・ストライプ対応）。
-- update: `updateScene()` が表示全体の更新の入口（シミュレーション停止も兼ねる）。`ghostPos()`、`aimPoint()`（クッションを考慮した狙い点）。
-- 厚み: 手球後方から見た接点ラインの横ずれ R·sinθ、縁〜接点ライン w = R(1−sinθ)、厚み = 2w。
+- `state.js`: `state`（全設定）と `SNAPSHOT_KEYS`（永続化対象）。新しい設定を足すときは state・SNAPSHOT_KEYS・`syncUI()`・`initUI()` のイベントの 4 か所。
+- `dom.js`: `$()`、`ui`（よく使う要素）。
+- `scene.js`: renderer / scene / camera / OrbitControls / ライト、`clampView()`。
+- `table.js`: `buildTable()`（クッション・レール・ポケット・ダイヤモンド）とグリッド。
+- `textures.js`: `makeBallTexture()`（UV の各画素を球面方向に戻して模様を描く。1〜15 番・ストライプ対応）、`obTexture()`。
+- `objects.js`: ボール・ゴースト・各ガイド（ライン、厚みの縦割り/壁、三角形、タンジェント、スロウ、矢印）の Mesh/Line。
+- `aim.js`: `dirVec()`、`ghostPos()`、`aimPoint()`（クッションを考慮した狙い点）、`rayToCushion()`、`obTravel()`、`approachDir()`。
+- `update.js`: `updateScene()` が表示全体の更新の入口（シミュレーション停止も兼ねる）。三角形・タンジェント・スロウの表示、毎フレームの `updateOutline()` / `updateTriLabel()`。
+  厚み: 手球後方から見た接点ラインの横ずれ R·sinθ、縁〜接点ライン w = R(1−sinθ)、厚み = 2w。
   縦割り面は球中心から R(2sinθ−1)。手球とゴーストの縦割り面は同一平面で、的球はその面に接する（厚みの壁の終点）。
-- throw: Alciatore TP A.14（μ(v_rel) = 0.00995 + 0.108·e^(−1.088·v_rel)）。
-- views: `setView(kind)`（cue / behind / top / side）。cue・behind は撞く方向に沿った視点で、`applyEye()` が利き目（±3.2cm）を反映。
+- `throw.js`: Alciatore TP A.14（μ(v_rel) = 0.00995 + 0.108·e^(−1.088·v_rel)）。`throwResult()`、`shotSpeedMS()`、`R_M`。
+- `views.js`: `setView(kind)`（cue / behind / top / side）。cue・behind は撞く方向に沿った視点で、`applyEye()` が利き目（±3.2cm）を反映。
   behind はゴーストの真後ろ・球中心の高さから水平に見る。
-- persistence: `snapshot()` / `applySnapshot()`（旧形式の読み替えもここ）/ `scheduleAutosave()`（400ms 間引き）。
-- simulation: 2D 剛体（dt 0.5ms、最大 20 秒）。`runSimulation()` が位置と姿勢クォータニオン（角速度を積分）を記録し、
+- `ui.js`: `initUI()`（フォーム・ボタンのイベント）、`syncUI()`（state → フォーム）、`syncArrowUI()`。
+- `menu.js`: ツールバーのプルダウン開閉。 `drag.js`: ボールのドラッグ。 `labels.js`: ポケットラベル A〜F。
+- `persistence.js`: `snapshot()` / `applySnapshot()`（旧形式の読み替えもここ）/ `scheduleAutosave()`（400ms 間引き）/ `saveLayout()` / `restoreLast()`。
+- `simulation.js`: 2D 剛体（dt 0.5ms、最大 20 秒）。`runSimulation()` が位置と姿勢クォータニオン（角速度を積分）を記録し、
   `tickSim()` が補間再生。最初の衝突時刻 `events.firstHit` で 0.5 秒停止（オプション）。速さは 1〜10 段階 × 0.5 m/s。
-- `index.html` 末尾の classic script: `setPointerCapture` の NotFoundError を無視するラッパーと、エラー表示（読み込み失敗は常時、実行時エラーは 6 秒で消す）。
 
 ## 動作確認
 
@@ -51,7 +63,7 @@ p.on('pageerror', e => console.log('pageerror', e.message));
 await p.goto('http://localhost:4173/');
 ```
 
-- 内部状態を触りたいときは、`src/main.js` の `renderer.setAnimationLoop(` の直前に一時的に
+- 内部状態を触りたいときは、`src/main.js` の `renderer.setAnimationLoop(` の直前に一時的に（必要な名前を import して）
   `Object.assign(window, { __cam: camera, __ctl: controls, __state: state, __update: updateScene });` を差し込む（コミットしない）。
 - PC（1280×800）とスマホ（390×844、360×740、横 844×390、`hasTouch/isMobile`）で確認する。
 - UI の変更はスクリーンショットで目視確認してから報告する。
@@ -65,4 +77,4 @@ await p.goto('http://localhost:4173/');
 
 - VR 対応（WebXR）: three.js の `renderer.xr` + VRButton。シーンを 1/100 して実物大、台の高さ約 80cm。
   VR 中は HTML メニューが出ないので、まずは「見る＋ショット」のみ。Artifact の埋め込みでは XR が許可されない可能性があり、Pages で試す。
-- アプリ化（Capacitor）: Vite 導入済み（three/dexie は同梱）。次は `src/main.js` のファイル分割、その後 Capacitor で iOS/Android。
+- アプリ化（Capacitor）: Vite 導入・ファイル分割済み（three/dexie は同梱）。次は Capacitor で iOS/Android。
