@@ -143,6 +143,12 @@
           <input type="radio" name="acount" id="ac3" value="3"><label for="ac3">3本（中心＋縁）</label>
         </div>
       </div>
+      <div class="row"><label>形状</label>
+        <div class="seg">
+          <input type="radio" name="astyle" id="as0" value="line" checked><label for="as0">線</label>
+          <input type="radio" name="astyle" id="as1" value="wall"><label for="as1">薄い壁</label>
+        </div>
+      </div>
       <div class="row"><label>高さ</label>
         <div class="seg">
           <input type="radio" name="aheight" id="ah0" value="center" checked><label for="ah0">中心</label>
@@ -217,6 +223,7 @@ const state = {
   arrowOn: true,
   arrowCount: 1,
   arrowHeight: 'center',
+  arrowStyle: 'line', // line | wall
   grid: 'off',       // off | point | half
 };
 
@@ -239,6 +246,16 @@ controls.minDistance = 6;
 controls.maxDistance = 600;
 controls.maxPolarAngle = Math.PI / 2 - 0.01;
 controls.touches = { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN };
+controls.screenSpacePanning = false;   // パンは水平面内（注視点が台の下に潜らない）
+
+// 視点が台の下に入らないよう、注視点とカメラの高さを制限する
+const MIN_CAM_Y = 1.0;
+function clampView() {
+  if (controls.target.y < 0) controls.target.y = 0;
+  if (controls.target.y > 60) controls.target.y = 60;
+  if (camera.position.y < MIN_CAM_Y) camera.position.y = MIN_CAM_Y;
+}
+controls.addEventListener('change', clampView);
 
 scene.add(new THREE.HemisphereLight(0xffffff, 0x404040, 1.1));
 const sun = new THREE.DirectionalLight(0xffffff, 1.6);
@@ -429,6 +446,27 @@ const arrowMats = {
   side: new THREE.MeshStandardMaterial({ color: 0xffe08a, roughness: 0.4, emissive: 0x3a3000 }),
 };
 
+const wallMats = {
+  center: new THREE.MeshBasicMaterial({ color: 0xff8a00, transparent: true, opacity: 0.28, side: THREE.DoubleSide, depthWrite: false }),
+  side: new THREE.MeshBasicMaterial({ color: 0xffe08a, transparent: true, opacity: 0.2, side: THREE.DoubleSide, depthWrite: false }),
+};
+const wallEdgeMats = {
+  center: new THREE.LineBasicMaterial({ color: 0xff8a00 }),
+  side: new THREE.LineBasicMaterial({ color: 0xffe08a }),
+};
+
+// +X 方向に伸びる垂直な薄い壁（原点が根元、ラシャ面から高さ h）
+function makeWall(length, h, kind) {
+  const g = new THREE.Group();
+  const geo = new THREE.PlaneGeometry(length, h);
+  geo.translate(length / 2, h / 2, 0);
+  const m = new THREE.Mesh(geo, wallMats[kind]);
+  m.renderOrder = 3;
+  const e = new THREE.LineSegments(new THREE.EdgesGeometry(geo), wallEdgeMats[kind]);
+  g.add(m, e);
+  return g;
+}
+
 // +X 方向を向いた矢印（原点が根元）
 function makeArrow(length, mat) {
   const g = new THREE.Group();
@@ -501,9 +539,10 @@ function updateScene() {
     const perp = new THREE.Vector3(-dir.z, 0, dir.x);
     const offsets = state.arrowCount === 3 ? [0, -R, R] : [0];
     for (const off of offsets) {
-      const a = makeArrow(length, off === 0 ? arrowMats.center : arrowMats.side);
+      const kind = off === 0 ? 'center' : 'side';
+      const a = state.arrowStyle === 'wall' ? makeWall(length, y, kind) : makeArrow(length, arrowMats[kind]);
       a.position.copy(gp).addScaledVector(dir, -back).addScaledVector(perp, off);
-      a.position.y = y;
+      a.position.y = state.arrowStyle === 'wall' ? 0 : y;
       a.rotation.y = -THREE.MathUtils.degToRad(state.angle);
       arrowGroup.add(a);
     }
@@ -734,6 +773,8 @@ document.querySelectorAll('input[name=csize]').forEach(el =>
   el.addEventListener('change', () => { state.contactSize = +el.value; updateScene(); }));
 document.querySelectorAll('input[name=acount]').forEach(el =>
   el.addEventListener('change', () => { state.arrowCount = +el.value; updateScene(); }));
+document.querySelectorAll('input[name=astyle]').forEach(el =>
+  el.addEventListener('change', () => { state.arrowStyle = el.value; updateScene(); }));
 document.querySelectorAll('input[name=aheight]').forEach(el =>
   el.addEventListener('change', () => { state.arrowHeight = el.value; updateScene(); }));
 document.querySelectorAll('input[name=grid]').forEach(el =>
@@ -788,7 +829,7 @@ container.addEventListener('pointerup', endDrag);
 container.addEventListener('pointercancel', endDrag);
 
 // ---------- persistence (Dexie / IndexedDB) ----------
-const SNAPSHOT_KEYS = ['aim', 'angle', 'transparent', 'contactSize', 'arrowOn', 'arrowCount', 'arrowHeight', 'grid', 'cbLine', 'triOn', 'tanOn'];
+const SNAPSHOT_KEYS = ['aim', 'angle', 'transparent', 'contactSize', 'arrowOn', 'arrowCount', 'arrowHeight', 'arrowStyle', 'grid', 'cbLine', 'triOn', 'tanOn'];
 
 function snapshot() {
   const o = { ob: { x: state.ob.x, z: state.ob.z }, cb: { x: state.cb.x, z: state.cb.z } };
@@ -802,6 +843,7 @@ function applyView(o) {
   if (o?.view?.pos && o.view.target) {
     controls.target.fromArray(o.view.target);
     camera.position.fromArray(o.view.pos);
+    clampView();
     controls.update();
   } else {
     setView('behind');
@@ -835,6 +877,7 @@ function syncUI() {
   radio('csize', state.contactSize);
   radio('acount', state.arrowCount);
   radio('aheight', state.arrowHeight);
+  radio('astyle', state.arrowStyle);
   radio('grid', state.grid);
 }
 
@@ -936,7 +979,7 @@ async function restoreLast() {
 }
 
 function syncArrowUI() {
-  document.querySelectorAll('input[name=acount], input[name=aheight]').forEach(el => { el.disabled = !state.arrowOn; });
+  document.querySelectorAll('input[name=acount], input[name=aheight], input[name=astyle]').forEach(el => { el.disabled = !state.arrowOn; });
 }
 
 const panel = $('panel');
