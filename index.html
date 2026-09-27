@@ -112,7 +112,7 @@
       <div class="row"><label class="check"><input id="triOn" type="checkbox">直角三角形（的球ライン延長への垂線）</label></div>
       <div class="stat" id="cutInfo"></div>
       <div class="stat" id="triInfo"></div>
-      <div class="row"><label class="check"><input id="tanOn" type="checkbox">タンジェントライン（クッション反射付き）</label></div>
+      <div class="row"><label class="check"><input id="tanOn" type="checkbox">タンジェントライン（ゴースト中心・クッション反射付き）</label></div>
       <div class="stat" id="tanInfo"></div>
       <div class="stat">ボールは台上でドラッグしても動かせます</div>
     </section>
@@ -611,13 +611,14 @@ function obTravel(dir) {
   return rayToCushion(state.ob.x, state.ob.z, dir.x, dir.z).t;
 }
 
-// プレイエリア（クッション面）の矩形内から (dx,dz) 方向に進んだときに当たる壁
-function rayToCushion(x, z, dx, dz) {
+// プレイエリア（クッション面から inset 内側）の矩形内から (dx,dz) 方向に進んだときに当たる壁
+function rayToCushion(x, z, dx, dz, inset = 0) {
+  const hx = TL / 2 - inset, hz = TW / 2 - inset;
   let t = Infinity, axis = null;
-  if (dx > 1e-9) { const k = (TL / 2 - x) / dx; if (k < t) { t = k; axis = 'x'; } }
-  if (dx < -1e-9) { const k = (-TL / 2 - x) / dx; if (k < t) { t = k; axis = 'x'; } }
-  if (dz > 1e-9) { const k = (TW / 2 - z) / dz; if (k < t) { t = k; axis = 'z'; } }
-  if (dz < -1e-9) { const k = (-TW / 2 - z) / dz; if (k < t) { t = k; axis = 'z'; } }
+  if (dx > 1e-9) { const k = (hx - x) / dx; if (k < t) { t = k; axis = 'x'; } }
+  if (dx < -1e-9) { const k = (-hx - x) / dx; if (k < t) { t = k; axis = 'x'; } }
+  if (dz > 1e-9) { const k = (hz - z) / dz; if (k < t) { t = k; axis = 'z'; } }
+  if (dz < -1e-9) { const k = (-hz - z) / dz; if (k < t) { t = k; axis = 'z'; } }
   return { t: Math.max(0, t), axis };
 }
 
@@ -635,13 +636,14 @@ function updateTangent(gp, dir) {
   if (Math.abs(side) < 1e-4) { ui.tanInfo.textContent = 'タンジェント: 厚み 1（真っ直ぐ）なので接線方向がありません'; return; }
   if (side < 0) { tx = -tx; tz = -tz; }
 
-  let x = (gp.x + state.ob.x) / 2, z = (gp.z + state.ob.z) / 2;
+  // ゴーストボール中心（＝分離後の手球中心）の軌道。中心はクッション面から R 手前で反射する
+  let x = gp.x, z = gp.z;
   let remain = obTravel(dir);
   const total = remain;
   const pts = [x, R, z];
   let bounces = 0;
   while (remain > 1e-6 && pts.length / 3 < TAN_MAX_PTS) {
-    const { t, axis } = rayToCushion(x, z, tx, tz);
+    const { t, axis } = rayToCushion(x, z, tx, tz, R);
     const step = Math.min(t, remain);
     x += tx * step; z += tz * step; remain -= step;
     pts.push(x, R, z);
