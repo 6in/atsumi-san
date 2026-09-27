@@ -1,0 +1,500 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Ghost Ball 3D</title>
+<style>
+  :root {
+    --bg: #1b1e22;
+    --panel: rgba(24, 27, 31, 0.9);
+    --fg: #e8eaed;
+    --muted: #9aa0a6;
+    --accent: #ff9f1a;
+    --line: #3a3f45;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); color: var(--fg);
+    font: 14px/1.4 system-ui, -apple-system, "Segoe UI", "Hiragino Sans", sans-serif; }
+  #view { position: fixed; inset: 0; touch-action: none; }
+  #view canvas { display: block; }
+  #panel {
+    position: fixed; top: 12px; right: 12px; width: 290px; max-height: calc(100% - 24px);
+    overflow-y: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+    padding: 10px 14px 14px; backdrop-filter: blur(6px);
+  }
+  #panel h1 { font-size: 15px; margin: 0; }
+  .head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  #toggle { display: none; }
+  section { border-top: 1px solid var(--line); margin-top: 10px; padding-top: 8px; }
+  section > h2 { font-size: 12px; color: var(--muted); margin: 0 0 6px; font-weight: 600; letter-spacing: .04em; }
+  .row { display: flex; align-items: center; gap: 8px; margin: 6px 0; }
+  .row > label:first-child:not(.check) { flex: 0 0 64px; color: var(--muted); }
+  .row input[type=range] { flex: 1; min-width: 0; accent-color: var(--accent); }
+  .row output { flex: 0 0 44px; text-align: right; font-variant-numeric: tabular-nums; }
+  .row select { flex: 1; background: #2a2e33; color: var(--fg); border: 1px solid var(--line); border-radius: 6px; padding: 4px; }
+  .seg { flex: 1; display: flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+  .seg input { display: none; }
+  .seg label { flex: 1; text-align: center; padding: 5px 0; cursor: pointer; user-select: none; }
+  .seg label:not(:first-of-type) { border-left: 1px solid var(--line); }
+  .seg input:checked + label { background: var(--accent); color: #1b1e22; font-weight: 600; }
+  .seg input:disabled + label { opacity: .4; cursor: default; }
+  .check { display: flex; align-items: center; gap: 8px; cursor: pointer; user-select: none; }
+  .check input { width: 18px; height: 18px; accent-color: var(--accent); }
+  button { background: #2a2e33; color: var(--fg); border: 1px solid var(--line); border-radius: 6px; padding: 6px 10px; cursor: pointer; font: inherit; }
+  button:active { background: #3a3f45; }
+  .btns { display: flex; gap: 8px; }
+  .btns button { flex: 1; }
+  .legend { display: flex; gap: 12px; font-size: 12px; color: var(--muted); }
+  .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; vertical-align: -1px; margin-right: 4px; }
+  #err { position: fixed; left: 12px; bottom: 12px; color: #ff8080; }
+
+  @media (max-width: 640px) {
+    #panel { top: auto; bottom: 0; right: 0; left: 0; width: auto; max-height: 48%;
+      border-radius: 12px 12px 0 0; padding-bottom: calc(14px + env(safe-area-inset-bottom)); }
+    #panel.collapsed { max-height: none; }
+    #panel.collapsed .body { display: none; }
+    #toggle { display: inline-block; padding: 4px 10px; }
+  }
+</style>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+</head>
+<body>
+<div id="view"></div>
+
+<div id="panel">
+  <div class="head">
+    <h1>ゴーストボール練習</h1>
+    <button id="toggle" type="button">閉じる</button>
+  </div>
+  <div class="body">
+    <section>
+      <h2>配置</h2>
+      <div class="row"><label for="obX">的球 X</label><input id="obX" type="range" min="-124" max="124" step="0.5" value="40"><output id="obXv"></output></div>
+      <div class="row"><label for="obZ">的球 Y</label><input id="obZ" type="range" min="-60" max="60" step="0.5" value="-20"><output id="obZv"></output></div>
+      <div class="row"><label for="aim">向き先</label>
+        <select id="aim">
+          <option value="manual">手動（角度）</option>
+          <option value="0">左上コーナー</option>
+          <option value="1">上サイド</option>
+          <option value="2" selected>右上コーナー</option>
+          <option value="3">左下コーナー</option>
+          <option value="4">下サイド</option>
+          <option value="5">右下コーナー</option>
+        </select>
+      </div>
+      <div class="row"><label for="ang">角度</label><input id="ang" type="range" min="0" max="359.5" step="0.5" value="0"><output id="angv"></output></div>
+    </section>
+
+    <section>
+      <h2>ゴーストボール</h2>
+      <div class="row"><label class="check"><input id="transparent" type="checkbox">透明表示</label></div>
+      <div class="row"><label>接点サイズ</label>
+        <div class="seg">
+          <input type="radio" name="csize" id="cs0" value="0"><label for="cs0">小</label>
+          <input type="radio" name="csize" id="cs1" value="1" checked><label for="cs1">中</label>
+          <input type="radio" name="csize" id="cs2" value="2"><label for="cs2">大</label>
+        </div>
+      </div>
+      <div class="legend">
+        <span><span class="dot" style="background:#ff3b4e"></span>地面接点</span>
+        <span><span class="dot" style="background:#2f8bff"></span>的球接点</span>
+        <span><span class="dot" style="background:#111;border:1px solid #888"></span>中心</span>
+      </div>
+    </section>
+
+    <section>
+      <h2>矢印</h2>
+      <div class="row"><label class="check"><input id="arrowOn" type="checkbox" checked>表示</label></div>
+      <div class="row"><label>本数</label>
+        <div class="seg">
+          <input type="radio" name="acount" id="ac1" value="1" checked><label for="ac1">1本（中心）</label>
+          <input type="radio" name="acount" id="ac3" value="3"><label for="ac3">3本（中心＋縁）</label>
+        </div>
+      </div>
+      <div class="row"><label>高さ</label>
+        <div class="seg">
+          <input type="radio" name="aheight" id="ah0" value="center" checked><label for="ah0">中心</label>
+          <input type="radio" name="aheight" id="ah1" value="top"><label for="ah1">ボール上端</label>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>視点</h2>
+      <div class="btns">
+        <button id="viewBehind" type="button">ゴースト後方</button>
+        <button id="viewTop" type="button">真上</button>
+        <button id="viewSide" type="button">真横</button>
+      </div>
+    </section>
+  </div>
+</div>
+<div id="err"></div>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { Line2 } from 'three/addons/lines/Line2.js';
+import { LineMaterial } from 'three/addons/lines/LineMaterial.js';
+import { LineGeometry } from 'three/addons/lines/LineGeometry.js';
+
+// 単位: cm。y が上方向、ラシャ面が y=0。X は台の長手方向、Z は短手方向。
+const R = 5.715 / 2;             // ボール半径
+const TL = 254, TW = 127;        // プレイエリア（9ft）
+const CUSHION_H = 3.6, CUSHION_W = 5;
+const RAIL_W = 14, RAIL_H = 4.4;
+const CONTACT_SIZES = [0.25, 0.45, 0.75];
+const ARROW_TOP_Y = 2 * R + 0.8;
+
+const POCKETS = [
+  [-TL / 2, -TW / 2], [0, -TW / 2 - 1.5], [TL / 2, -TW / 2],
+  [-TL / 2,  TW / 2], [0,  TW / 2 + 1.5], [TL / 2,  TW / 2],
+];
+
+const state = {
+  ob: new THREE.Vector3(40, R, -20),
+  angle: 0,          // 的球の進行方向（度）。XZ 平面で +X から +Z 方向へ
+  aim: '2',
+  transparent: false,
+  contactSize: 1,
+  arrowOn: true,
+  arrowCount: 1,
+  arrowHeight: 'center',
+};
+
+// ---------- renderer / scene ----------
+const container = document.getElementById('view');
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+container.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x1b1e22);
+
+const camera = new THREE.PerspectiveCamera(45, 1, 0.5, 3000);
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.dampingFactor = 0.1;
+controls.minDistance = 6;
+controls.maxDistance = 600;
+controls.maxPolarAngle = Math.PI / 2 - 0.01;
+controls.touches = { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN };
+
+scene.add(new THREE.HemisphereLight(0xffffff, 0x404040, 1.1));
+const sun = new THREE.DirectionalLight(0xffffff, 1.6);
+sun.position.set(30, 200, 60);
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+Object.assign(sun.shadow.camera, { left: -150, right: 150, top: 90, bottom: -90, near: 50, far: 400 });
+sun.shadow.bias = -0.0005;
+scene.add(sun);
+
+// ---------- table ----------
+function box(w, h, d, color, x, y, z, opts = {}) {
+  const m = new THREE.Mesh(
+    new THREE.BoxGeometry(w, h, d),
+    new THREE.MeshStandardMaterial({ color, roughness: opts.roughness ?? 0.8 })
+  );
+  m.position.set(x, y, z);
+  m.receiveShadow = true;
+  m.castShadow = !!opts.cast;
+  scene.add(m);
+  return m;
+}
+
+function buildTable() {
+  const cloth = 0x1f6e44, cushion = 0x1a5e3a, wood = 0x5a3620;
+  const outerL = TL + 2 * (CUSHION_W + RAIL_W), outerW = TW + 2 * (CUSHION_W + RAIL_W);
+
+  box(TL + 2 * CUSHION_W, 2, TW + 2 * CUSHION_W, cloth, 0, -1, 0, { roughness: 0.95 });
+  box(outerL, 18, outerW, wood, 0, -11, 0, { roughness: 0.6 });
+
+  // クッション（ポケット部分は切り欠き）
+  const gapC = 7, gapS = 6.5;
+  const segL = TL / 2 - gapC - gapS;
+  for (const sz of [-1, 1]) {
+    const z = sz * (TW / 2 + CUSHION_W / 2);
+    for (const sx of [-1, 1]) {
+      box(segL, CUSHION_H, CUSHION_W, cushion, sx * (gapS + segL / 2), CUSHION_H / 2, z, { cast: true });
+    }
+  }
+  for (const sx of [-1, 1]) {
+    box(CUSHION_W, CUSHION_H, TW - 2 * gapC, cushion, sx * (TL / 2 + CUSHION_W / 2), CUSHION_H / 2, 0, { cast: true });
+  }
+
+  // レール
+  const rOff = CUSHION_W + RAIL_W / 2;
+  for (const s of [-1, 1]) {
+    box(outerL, RAIL_H, RAIL_W, wood, 0, RAIL_H / 2, s * (TW / 2 + rOff), { roughness: 0.6 });
+    box(RAIL_W, RAIL_H, TW + 2 * CUSHION_W, wood, s * (TL / 2 + rOff), RAIL_H / 2, 0, { roughness: 0.6 });
+  }
+
+  // ポケット
+  const pocketMat = new THREE.MeshBasicMaterial({ color: 0x050505 });
+  const pocketGeo = new THREE.CylinderGeometry(6.2, 6.2, RAIL_H + 0.4, 32);
+  for (const [px, pz] of POCKETS) {
+    const p = new THREE.Mesh(pocketGeo, pocketMat);
+    const push = 3;
+    p.position.set(px + Math.sign(px) * push, RAIL_H / 2 + 0.05, pz + Math.sign(pz) * push);
+    scene.add(p);
+  }
+
+  // ダイヤモンド
+  const diaMat = new THREE.MeshBasicMaterial({ color: 0xf2efe6 });
+  const diaGeo = new THREE.CircleGeometry(0.8, 16);
+  const addDia = (x, z) => {
+    const d = new THREE.Mesh(diaGeo, diaMat);
+    d.rotation.x = -Math.PI / 2;
+    d.position.set(x, RAIL_H + 0.02, z);
+    scene.add(d);
+  };
+  for (let i = 1; i < 8; i++) {
+    if (i === 4) continue;
+    const x = -TL / 2 + (TL / 8) * i;
+    addDia(x, -(TW / 2 + rOff));
+    addDia(x, TW / 2 + rOff);
+  }
+  for (let i = 1; i < 4; i++) {
+    const z = -TW / 2 + (TW / 4) * i;
+    addDia(-(TL / 2 + rOff), z);
+    addDia(TL / 2 + rOff, z);
+  }
+}
+buildTable();
+
+// ---------- balls ----------
+const ballGeo = new THREE.SphereGeometry(R, 64, 32);
+const obBall = new THREE.Mesh(ballGeo, new THREE.MeshStandardMaterial({ color: 0xf5c400, roughness: 0.25, metalness: 0.05 }));
+obBall.castShadow = true;
+scene.add(obBall);
+
+const ghostMat = new THREE.MeshStandardMaterial({ color: 0x9a9a9a, roughness: 0.35 });
+const ghost = new THREE.Mesh(ballGeo, ghostMat);
+ghost.castShadow = true;
+scene.add(ghost);
+
+// 透明時の補助表示
+const ghostCenter = new THREE.Mesh(
+  new THREE.SphereGeometry(0.22, 16, 12),
+  new THREE.MeshBasicMaterial({ color: 0x111111 })
+);
+scene.add(ghostCenter);
+
+const outlineMat = new LineMaterial({ color: 0xf0f0f0, linewidth: 2 });
+const outline = (() => {
+  const pts = [];
+  const N = 128;
+  for (let i = 0; i <= N; i++) {
+    const t = (i / N) * Math.PI * 2;
+    pts.push(Math.cos(t), Math.sin(t), 0);
+  }
+  const g = new LineGeometry();
+  g.setPositions(pts);
+  return new Line2(g, outlineMat);
+})();
+scene.add(outline);
+
+const unitSphere = new THREE.SphereGeometry(1, 24, 16);
+const groundContact = new THREE.Mesh(unitSphere, new THREE.MeshBasicMaterial({ color: 0xff3b4e }));
+const ballContact = new THREE.Mesh(unitSphere, new THREE.MeshBasicMaterial({ color: 0x2f8bff }));
+scene.add(groundContact, ballContact);
+
+// ---------- arrows ----------
+const arrowGroup = new THREE.Group();
+scene.add(arrowGroup);
+const arrowMats = {
+  center: new THREE.MeshStandardMaterial({ color: 0xff8a00, roughness: 0.4, emissive: 0x552a00 }),
+  side: new THREE.MeshStandardMaterial({ color: 0xffe08a, roughness: 0.4, emissive: 0x3a3000 }),
+};
+
+// +X 方向を向いた矢印（原点が根元）
+function makeArrow(length, mat) {
+  const g = new THREE.Group();
+  const shaftR = 0.18, headR = 0.65, headL = 2.6;
+  const shaft = new THREE.Mesh(new THREE.CylinderGeometry(shaftR, shaftR, length - headL, 12), mat);
+  shaft.rotation.z = -Math.PI / 2;
+  shaft.position.x = (length - headL) / 2;
+  const head = new THREE.Mesh(new THREE.ConeGeometry(headR, headL, 20), mat);
+  head.rotation.z = -Math.PI / 2;
+  head.position.x = length - headL / 2;
+  shaft.castShadow = head.castShadow = true;
+  g.add(shaft, head);
+  return g;
+}
+
+function disposeGroup(group) {
+  group.traverse(o => { if (o.geometry) o.geometry.dispose(); });
+  group.clear();
+}
+
+// ---------- update ----------
+const tmp = new THREE.Vector3();
+
+function dirVec() {
+  const a = THREE.MathUtils.degToRad(state.angle);
+  return new THREE.Vector3(Math.cos(a), 0, Math.sin(a));
+}
+
+function ghostPos() {
+  return state.ob.clone().addScaledVector(dirVec(), -2 * R);
+}
+
+function updateScene() {
+  if (state.aim !== 'manual') {
+    const [px, pz] = POCKETS[+state.aim];
+    let deg = THREE.MathUtils.radToDeg(Math.atan2(pz - state.ob.z, px - state.ob.x));
+    state.angle = (deg + 360) % 360;
+    ui.ang.value = state.angle;
+  }
+
+  const dir = dirVec();
+  const gp = ghostPos();
+  obBall.position.copy(state.ob);
+  ghost.position.copy(gp);
+
+  // ゴーストボール表示モード
+  const t = state.transparent;
+  ghostMat.transparent = t;
+  ghostMat.opacity = t ? 0.18 : 1;
+  ghostMat.depthWrite = !t;
+  ghostMat.needsUpdate = true;
+  ghost.castShadow = !t;
+  ghost.renderOrder = t ? 2 : 0;
+  ghostCenter.visible = outline.visible = groundContact.visible = ballContact.visible = t;
+
+  ghostCenter.position.copy(gp);
+  const s = CONTACT_SIZES[state.contactSize];
+  groundContact.scale.setScalar(s);
+  groundContact.position.set(gp.x, 0, gp.z);
+  ballContact.scale.setScalar(s);
+  ballContact.position.copy(gp).add(state.ob).multiplyScalar(0.5);
+
+  // 矢印
+  disposeGroup(arrowGroup);
+  arrowGroup.visible = state.arrowOn;
+  if (state.arrowOn) {
+    const back = 4 * R, front = 14 * R;
+    const length = back + 2 * R + front;
+    const y = state.arrowHeight === 'center' ? R : ARROW_TOP_Y;
+    const perp = new THREE.Vector3(-dir.z, 0, dir.x);
+    const offsets = state.arrowCount === 3 ? [0, -R, R] : [0];
+    for (const off of offsets) {
+      const a = makeArrow(length, off === 0 ? arrowMats.center : arrowMats.side);
+      a.position.copy(gp).addScaledVector(dir, -back).addScaledVector(perp, off);
+      a.position.y = y;
+      a.rotation.y = -THREE.MathUtils.degToRad(state.angle);
+      arrowGroup.add(a);
+    }
+  }
+
+  ui.obXv.value = state.ob.x.toFixed(1);
+  ui.obZv.value = state.ob.z.toFixed(1);
+  ui.angv.value = state.angle.toFixed(1) + '°';
+}
+
+// 透視投影でのシルエット円（カメラから見た輪郭）を毎フレーム合わせる
+function updateOutline() {
+  if (!outline.visible) return;
+  const c = ghost.position;
+  tmp.subVectors(camera.position, c);
+  const d = tmp.length();
+  if (d <= R) { outline.visible = false; return; }
+  tmp.normalize();
+  const r = (R * Math.sqrt(d * d - R * R)) / d;
+  outline.position.copy(c).addScaledVector(tmp, (R * R) / d);
+  outline.scale.setScalar(r);
+  outline.lookAt(camera.position);
+}
+
+// ---------- views ----------
+function setView(kind) {
+  const dir = dirVec();
+  const mid = ghostPos().add(state.ob).multiplyScalar(0.5);
+  controls.target.copy(mid);
+  if (kind === 'top') {
+    camera.position.set(mid.x, 90, mid.z + 0.01);
+  } else if (kind === 'side') {
+    const perp = new THREE.Vector3(-dir.z, 0, dir.x);
+    camera.position.copy(mid).addScaledVector(perp, 40);
+    camera.position.y = R + 0.5;
+  } else {
+    camera.position.copy(mid).addScaledVector(dir, -40);
+    camera.position.y = 22;
+  }
+  controls.update();
+}
+
+// ---------- UI ----------
+const $ = id => document.getElementById(id);
+const ui = {
+  obX: $('obX'), obZ: $('obZ'), obXv: $('obXv'), obZv: $('obZv'),
+  aim: $('aim'), ang: $('ang'), angv: $('angv'),
+};
+
+ui.obX.addEventListener('input', () => { state.ob.x = +ui.obX.value; updateScene(); });
+ui.obZ.addEventListener('input', () => { state.ob.z = +ui.obZ.value; updateScene(); });
+ui.aim.addEventListener('change', () => { state.aim = ui.aim.value; updateScene(); });
+ui.ang.addEventListener('input', () => {
+  state.aim = 'manual';
+  ui.aim.value = 'manual';
+  state.angle = +ui.ang.value;
+  updateScene();
+});
+$('transparent').addEventListener('change', e => { state.transparent = e.target.checked; updateScene(); });
+$('arrowOn').addEventListener('change', e => { state.arrowOn = e.target.checked; syncArrowUI(); updateScene(); });
+document.querySelectorAll('input[name=csize]').forEach(el =>
+  el.addEventListener('change', () => { state.contactSize = +el.value; updateScene(); }));
+document.querySelectorAll('input[name=acount]').forEach(el =>
+  el.addEventListener('change', () => { state.arrowCount = +el.value; updateScene(); }));
+document.querySelectorAll('input[name=aheight]').forEach(el =>
+  el.addEventListener('change', () => { state.arrowHeight = el.value; updateScene(); }));
+$('viewBehind').addEventListener('click', () => setView('behind'));
+$('viewTop').addEventListener('click', () => setView('top'));
+$('viewSide').addEventListener('click', () => setView('side'));
+
+function syncArrowUI() {
+  document.querySelectorAll('input[name=acount], input[name=aheight]').forEach(el => { el.disabled = !state.arrowOn; });
+}
+
+const panel = $('panel');
+$('toggle').addEventListener('click', () => {
+  panel.classList.toggle('collapsed');
+  $('toggle').textContent = panel.classList.contains('collapsed') ? '設定' : '閉じる';
+});
+
+function resize() {
+  const w = window.innerWidth, h = window.innerHeight;
+  renderer.setSize(w, h);
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+  outlineMat.resolution.set(w, h);
+}
+window.addEventListener('resize', resize);
+
+resize();
+syncArrowUI();
+updateScene();
+setView('behind');
+
+renderer.setAnimationLoop(() => {
+  controls.update();
+  updateOutline();
+  renderer.render(scene, camera);
+});
+</script>
+<script>
+  // importmap / CDN 読込失敗時の表示
+  window.addEventListener('error', e => {
+    document.getElementById('err').textContent = '読み込みエラー: ' + (e.message || 'Three.js を取得できません');
+  }, true);
+</script>
+</body>
+</html>
