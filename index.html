@@ -112,7 +112,7 @@
       <div class="row"><label for="cbZ">手球 Y</label><input id="cbZ" type="range" min="-60" max="60" step="0.5" value="20"><output id="cbZv"></output></div>
       <div class="row"><label class="check"><input id="cbLine" type="checkbox" checked>手球→ゴーストのライン</label></div>
       <div class="row"><label class="check"><input id="cpLine" type="checkbox">接点ガイドライン（手球の接点→的球との接点）</label></div>
-      <div class="row"><label class="check"><input id="thickOn" type="checkbox">厚みサークル（手球の縁〜接点ラインの幅×2）</label></div>
+      <div class="row"><label class="check"><input id="thickOn" type="checkbox">厚みで手球を縦割り（縁〜接点ラインの幅×2）</label></div>
       <div class="row"><label class="check"><input id="triOn" type="checkbox">直角三角形（的球ライン延長への垂線）</label></div>
       <div class="stat" id="cutInfo"></div>
       <div class="stat" id="triInfo"></div>
@@ -283,6 +283,7 @@ const state = {
 // ---------- renderer / scene ----------
 const container = document.getElementById('view');
 const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.localClippingEnabled = true;
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -503,20 +504,26 @@ const cpDotMat = new THREE.MeshBasicMaterial({ color: 0x7dff6b });
 const cpDots = [0, 1, 2].map(() => new THREE.Mesh(cpDotGeo, cpDotMat));
 scene.add(cpLine, ...cpDots);
 
-// 厚みサークル: 手球の背面に立てた円。半径 = 手球の縁から接点ラインまでの幅 w、直径 2w = 厚み
-const thickCircle = new THREE.Group();
-thickCircle.add(
+// 厚みの縦割り: 手球の縁から厚み 2w の位置を通る、撞く方向に平行な鉛直面で手球を切る。
+// 切り口の円は手球越しに見えるよう depthTest なしで描き、厚みの側の球面を色付けする。
+const thickClip = new THREE.Plane();
+const thickCap = new THREE.Mesh(new THREE.SphereGeometry(R * 1.01, 48, 32),
+  new THREE.MeshBasicMaterial({ color: 0x7dff6b, transparent: true, opacity: 0.45, depthWrite: false, clippingPlanes: [thickClip] }));
+const thickSliceMat = new LineMaterial({ color: 0x7dff6b, linewidth: 2.5, depthTest: false, transparent: true });
+const thickSlice = new THREE.Group();
+thickSlice.add(
   new THREE.Mesh(new THREE.CircleGeometry(1, 48),
-    new THREE.MeshBasicMaterial({ color: 0x7dff6b, transparent: true, opacity: 0.3, side: THREE.DoubleSide, depthWrite: false })),
+    new THREE.MeshBasicMaterial({ color: 0x7dff6b, transparent: true, opacity: 0.25, side: THREE.DoubleSide, depthTest: false, depthWrite: false })),
   (() => {
     const pts = [];
     for (let i = 0; i <= 64; i++) { const a = (i / 64) * Math.PI * 2; pts.push(Math.cos(a), Math.sin(a), 0); }
     const g = new LineGeometry();
     g.setPositions(pts);
-    return new Line2(g, cpLineMat);
+    return new Line2(g, thickSliceMat);
   })(),
 );
-scene.add(thickCircle);
+thickSlice.traverse(o => { o.renderOrder = 10; });
+scene.add(thickCap, thickSlice);
 
 // 直角三角形: G(ゴースト中心) - F(手球から的球ライン延長への垂線の足) - C(手球中心)。ラシャ面上に描く。
 const TRI_Y = 0.05, ARC_N = 32;
@@ -767,12 +774,18 @@ function updateScene() {
   // 手球後方から見た接点ラインの横ずれ R·sinθ と、縁までの幅 w = R(1 − sinθ)
   const along = hasCue ? dir.dot(cue) : 0;
   const lateral = dir.clone().addScaledVector(cue, -along);
-  thickCircle.visible = state.thickOn && hasCue && along > 1e-6;
-  if (thickCircle.visible) {
-    const w = R * (1 - lateral.length());
-    thickCircle.position.copy(state.cb).addScaledVector(lateral, R).addScaledVector(cue, -(R + 0.3));
-    thickCircle.lookAt(thickCircle.position.clone().sub(cue));
-    thickCircle.scale.setScalar(Math.max(w, 1e-3));
+  const sinCut = lateral.length();
+  thickCap.visible = thickSlice.visible = state.thickOn && hasCue && along > 1e-6;
+  if (thickCap.visible) {
+    // 接点側の横方向。フルヒット（横ずれ 0）は切断面が反対側の縁に来るのでどちら向きでもよい
+    const side = sinCut > 1e-6 ? lateral.clone().divideScalar(sinCut) : new THREE.Vector3(-cue.z, 0, cue.x);
+    const d = R * (2 * sinCut - 1);   // 手球中心から切断面まで（縁 R から厚み 2R(1 − sinθ) 内側）
+    const r = Math.sqrt(Math.max(R * R - d * d, 0));
+    thickCap.position.copy(state.cb);
+    thickClip.set(side, -(side.dot(state.cb) + d));
+    thickSlice.position.copy(state.cb).addScaledVector(side, d);
+    thickSlice.lookAt(thickSlice.position.clone().add(side));
+    thickSlice.scale.setScalar(Math.max(r, 1e-3));
   }
   const cpOn = state.cpLine && hasCue;
   cpLine.visible = cpOn;
@@ -1513,7 +1526,7 @@ function startSim() {
   const res = runSimulation();
   if (!res) { ui.simInfo.textContent = '手球とゴーストボールが重なっていて撞けません'; return; }
   // 補助表示を隠す
-  [ghost, ghostCenter, outline, groundContact, groundRing, ballContact, arrowGroup, cbLine, cbBackDot, cpLine, ...cpDots, thickCircle, triLine, triRight, triArc,
+  [ghost, ghostCenter, outline, groundContact, groundRing, ballContact, arrowGroup, cbLine, cbBackDot, cpLine, ...cpDots, thickCap, thickSlice, triLine, triRight, triArc,
    tanLine, tanEnd, throwLine, compGhost, compAimLine].forEach(o => { o.visible = false; });
   triLabelVisible = false;
   const trails = [0, 1].map(i => {
@@ -1613,6 +1626,7 @@ function resize() {
   gridMats.half.resolution.set(w, h);
   cbLineMat.resolution.set(w, h);
   cpLineMat.resolution.set(w, h);
+  thickSliceMat.resolution.set(w, h);
   triMat.resolution.set(w, h);
   triThinMat.resolution.set(w, h);
   tanMat.resolution.set(w, h);
