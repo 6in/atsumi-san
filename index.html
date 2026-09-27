@@ -190,7 +190,7 @@
       <div class="row"><label>高さ</label>
         <div class="seg">
           <input type="radio" name="aheight" id="ah0" value="center" checked><label for="ah0">中心</label>
-          <input type="radio" name="aheight" id="ah1" value="top"><label for="ah1">ボール上端</label>
+          <input type="radio" name="aheight" id="ah1" value="top"><label for="ah1">ボールの高さ</label>
         </div>
       </div>
     </section>
@@ -755,7 +755,9 @@ function updateScene() {
   arrowGroup.visible = state.arrowOn;
   if (state.arrowOn) {
     const back = 4 * R;
-    const y = state.arrowHeight === 'center' ? R : ARROW_TOP_Y;
+    // 壁はボールの高さ（直径）ちょうど、線は球に埋もれないよう少し上に浮かせる
+    const wall = state.arrowStyle === 'wall';
+    const y = state.arrowHeight === 'center' ? R : wall ? 2 * R : ARROW_TOP_Y;
     const perp = new THREE.Vector3(-dir.z, 0, dir.x);
     const offsets = state.arrowCount === 3 ? [0, -R, R] : [0];
     for (const off of offsets) {
@@ -763,9 +765,9 @@ function updateScene() {
       // ゴースト中心の横位置から、クッション面（ポケットでは開口部）に達するまで
       const front = rayToCushion(gp.x + perp.x * off, gp.z + perp.z * off, dir.x, dir.z).t;
       const length = back + Math.max(front, 2 * R);
-      const a = state.arrowStyle === 'wall' ? makeWall(length, y, kind) : makeArrow(length, arrowMats[kind]);
+      const a = wall ? makeWall(length, y, kind) : makeArrow(length, arrowMats[kind]);
       a.position.copy(gp).addScaledVector(dir, -back).addScaledVector(perp, off);
-      a.position.y = state.arrowStyle === 'wall' ? 0 : y;
+      a.position.y = wall ? 0 : y;
       a.rotation.y = -THREE.MathUtils.degToRad(state.angle);
       arrowGroup.add(a);
     }
