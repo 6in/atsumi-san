@@ -91,8 +91,6 @@
   <div class="body">
     <section>
       <h2>配置</h2>
-      <div class="row"><label for="obX">的球 X</label><input id="obX" type="range" min="-124" max="124" step="0.5" value="40"><output id="obXv"></output></div>
-      <div class="row"><label for="obZ">的球 Y</label><input id="obZ" type="range" min="-60" max="60" step="0.5" value="-20"><output id="obZv"></output></div>
       <div class="row"><label for="aim">向き先</label>
         <select id="aim">
           <option value="manual">手動（角度）</option>
@@ -507,26 +505,42 @@ const cpDotMat = new THREE.MeshBasicMaterial({ color: 0x7dff6b });
 const cpDots = [0, 1, 2].map(() => new THREE.Mesh(cpDotGeo, cpDotMat));
 scene.add(cpLine, ...cpDots);
 
-// 厚みの縦割り: 手球の縁から厚み 2w の位置を通る、撞く方向に平行な鉛直面で手球を切る。
-// 切り口の円は手球越しに見えるよう depthTest なしで描き、厚みの側の球面を色付けする。
-const thickClip = new THREE.Plane();
-const thickCap = new THREE.Mesh(new THREE.SphereGeometry(R * 1.01, 48, 32),
-  new THREE.MeshBasicMaterial({ color: 0x7dff6b, transparent: true, opacity: 0.45, depthWrite: false, clippingPlanes: [thickClip] }));
+// 厚みの縦割り: 撞く方向に平行な鉛直面で球を切る。手球は縁から厚み 2w の位置で切って厚みの側を、
+// ゴーストボールは同じ位置で切って的球と重ならない側を色付けする。
+// 切り口の円は球越しに見えるよう depthTest なしで描く。
 const thickSliceMat = new LineMaterial({ color: 0x7dff6b, linewidth: 2.5, depthTest: false, transparent: true });
-const thickSlice = new THREE.Group();
-thickSlice.add(
-  new THREE.Mesh(new THREE.CircleGeometry(1, 48),
-    new THREE.MeshBasicMaterial({ color: 0x7dff6b, transparent: true, opacity: 0.25, side: THREE.DoubleSide, depthTest: false, depthWrite: false })),
-  (() => {
-    const pts = [];
-    for (let i = 0; i <= 64; i++) { const a = (i / 64) * Math.PI * 2; pts.push(Math.cos(a), Math.sin(a), 0); }
-    const g = new LineGeometry();
-    g.setPositions(pts);
-    return new Line2(g, thickSliceMat);
-  })(),
-);
-thickSlice.traverse(o => { o.renderOrder = 10; });
-scene.add(thickCap, thickSlice);
+const unitRing = (() => {
+  const pts = [];
+  for (let i = 0; i <= 64; i++) { const a = (i / 64) * Math.PI * 2; pts.push(Math.cos(a), Math.sin(a), 0); }
+  const g = new LineGeometry();
+  g.setPositions(pts);
+  return g;
+})();
+function makeThickSplit(color) {
+  const clip = new THREE.Plane();
+  const cap = new THREE.Mesh(new THREE.SphereGeometry(R * 1.01, 48, 32),
+    new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.45, depthWrite: false, clippingPlanes: [clip] }));
+  const slice = new THREE.Group();
+  slice.add(
+    new THREE.Mesh(new THREE.CircleGeometry(1, 48),
+      new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.25, side: THREE.DoubleSide, depthTest: false, depthWrite: false })),
+    new Line2(unitRing, thickSliceMat),
+  );
+  slice.traverse(o => { o.renderOrder = 10; });
+  scene.add(cap, slice);
+  return { clip, cap, slice };
+}
+// center の球を、中心から side 方向に d の面で切り、sign 側（+1: side 側、−1: 反対側）を色付け
+function placeThickSplit(t, center, side, d, sign) {
+  t.cap.position.copy(center);
+  t.clip.set(side.clone().multiplyScalar(sign), -sign * (side.dot(center) + d));
+  t.slice.position.copy(center).addScaledVector(side, d);
+  t.slice.lookAt(t.slice.position.clone().add(side));
+  t.slice.scale.setScalar(Math.max(Math.sqrt(Math.max(R * R - d * d, 0)), 1e-3));
+}
+const thickCue = makeThickSplit(0x7dff6b);
+const thickGhost = makeThickSplit(0xff9f5a);
+const thickParts = [thickCue, thickGhost].flatMap(t => [t.cap, t.slice]);
 
 // 直角三角形: G(ゴースト中心) - F(手球から的球ライン延長への垂線の足) - C(手球中心)。ラシャ面上に描く。
 const TRI_Y = 0.05, ARC_N = 32;
@@ -778,17 +792,16 @@ function updateScene() {
   const along = hasCue ? dir.dot(cue) : 0;
   const lateral = dir.clone().addScaledVector(cue, -along);
   const sinCut = lateral.length();
-  thickCap.visible = thickSlice.visible = state.thickOn && hasCue && along > 1e-6;
-  if (thickCap.visible) {
+  const thickVisible = state.thickOn && hasCue && along > 1e-6;
+  thickParts.forEach(o => { o.visible = thickVisible; });
+  if (thickVisible) {
     // 接点側の横方向。フルヒット（横ずれ 0）は切断面が反対側の縁に来るのでどちら向きでもよい
     const side = sinCut > 1e-6 ? lateral.clone().divideScalar(sinCut) : new THREE.Vector3(-cue.z, 0, cue.x);
-    const d = R * (2 * sinCut - 1);   // 手球中心から切断面まで（縁 R から厚み 2R(1 − sinθ) 内側）
-    const r = Math.sqrt(Math.max(R * R - d * d, 0));
-    thickCap.position.copy(state.cb);
-    thickClip.set(side, -(side.dot(state.cb) + d));
-    thickSlice.position.copy(state.cb).addScaledVector(side, d);
-    thickSlice.lookAt(thickSlice.position.clone().add(side));
-    thickSlice.scale.setScalar(Math.max(r, 1e-3));
+    // 球の中心から切断面まで: 接点側の縁 R から厚み 2R(1 − sinθ) 内側。
+    // 撞く方向に沿って見ると、的球の輪郭がちょうどこの面の位置に来る
+    const d = R * (2 * sinCut - 1);
+    placeThickSplit(thickCue, state.cb, side, d, 1);
+    placeThickSplit(thickGhost, gp, side, d, -1);
   }
   const cpOn = state.cpLine && hasCue;
   cpLine.visible = cpOn;
@@ -820,8 +833,6 @@ function updateScene() {
   gridPoint.visible = state.grid !== 'off';
   gridHalf.visible = state.grid === 'half';
 
-  ui.obXv.value = state.ob.x.toFixed(1);
-  ui.obZv.value = state.ob.z.toFixed(1);
   ui.angv.value = state.angle.toFixed(1) + '°';
   const f = state.throwFollow, sd = state.throwSide;
   $('tFollowv').value = f === 0 ? 'ストップ' : (f > 0 ? '押し' : '引き') + Math.abs(f);
@@ -1092,14 +1103,11 @@ function setView(kind) {
 // ---------- UI ----------
 const $ = id => document.getElementById(id);
 const ui = {
-  obX: $('obX'), obZ: $('obZ'), obXv: $('obXv'), obZv: $('obZv'),
   aim: $('aim'), ang: $('ang'), angv: $('angv'),
   cutInfo: $('cutInfo'),
   triInfo: $('triInfo'), triLabel: $('triLabel'), tanInfo: $('tanInfo'), throwInfo: $('throwInfo'), simInfo: $('simInfo'),
 };
 
-ui.obX.addEventListener('input', () => { state.ob.x = +ui.obX.value; updateScene(); });
-ui.obZ.addEventListener('input', () => { state.ob.z = +ui.obZ.value; updateScene(); });
 $('aimCushion').addEventListener('change', e => { state.aimCushion = e.target.checked; updateScene(); });
 $('cbLine').addEventListener('change', e => { state.cbLine = e.target.checked; updateScene(); });
 $('cpLine').addEventListener('change', e => { state.cpLine = e.target.checked; updateScene(); });
@@ -1131,20 +1139,16 @@ document.querySelectorAll('input[name=aheight]').forEach(el =>
 document.querySelectorAll('input[name=grid]').forEach(el =>
   el.addEventListener('change', () => { state.grid = el.value; updateScene(); }));
 $('viewBehind').addEventListener('click', () => {
-  state.ob.x = +ui.obX.value; state.ob.z = +ui.obZ.value;
   setView('behind');
 });
 $('viewCue').addEventListener('click', () => {
-  state.ob.x = +ui.obX.value; state.ob.z = +ui.obZ.value;
   setView('cue');
 });
 controls.addEventListener('change', () => scheduleAutosave());
 $('viewTop').addEventListener('click', () => {
-  state.ob.x = +ui.obX.value; state.ob.z = +ui.obZ.value;
   setView('top');
 });
 $('viewSide').addEventListener('click', () => {
-  state.ob.x = +ui.obX.value; state.ob.z = +ui.obZ.value;
   setView('side');
 });
 
@@ -1226,8 +1230,6 @@ function applySnapshot(o) {
 
 // state → フォーム
 function syncUI() {
-  ui.obX.value = state.ob.x; ui.obZ.value = state.ob.z;
- 
   ui.aim.value = state.aim; ui.ang.value = state.angle;
   $('cbLine').checked = state.cbLine;
   $('cpLine').checked = state.cpLine;
@@ -1521,7 +1523,7 @@ function startSim() {
   const res = runSimulation();
   if (!res) { ui.simInfo.textContent = '手球とゴーストボールが重なっていて撞けません'; return; }
   // 補助表示を隠す
-  [ghost, ghostCenter, outline, groundContact, groundRing, ballContact, arrowGroup, cbLine, cbBackDot, cpLine, ...cpDots, thickCap, thickSlice, triLine, triRight, triArc,
+  [ghost, ghostCenter, outline, groundContact, groundRing, ballContact, arrowGroup, cbLine, cbBackDot, cpLine, ...cpDots, ...thickParts, triLine, triRight, triArc,
    tanLine, tanEnd, throwLine, compGhost, compAimLine].forEach(o => { o.visible = false; });
   triLabelVisible = false;
   const trails = [0, 1].map(i => {
