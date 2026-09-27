@@ -1450,22 +1450,28 @@ function startSim() {
 
 // ポケットラベル表示
 const pocketLabels = ['A', 'B', 'C', 'D', 'E', 'F'];
+let labelDebugOnce = false;
 function updatePocketLabels() {
   const labelDiv = document.getElementById('pocketLabels');
   if (!labelDiv) return;
   labelDiv.innerHTML = '';
+  const w = renderer.domElement.clientWidth;
+  const h = renderer.domElement.clientHeight;
+  if (!labelDebugOnce) {
+    console.log(`Renderer dimensions: ${w}x${h}, canvas: ${renderer.domElement.canvas?.width}x${renderer.domElement.canvas?.height}`);
+    labelDebugOnce = true;
+  }
   for (let i = 0; i < POCKETS.length; i++) {
     const [px, pz] = POCKETS[i];
-    // ポケット位置（台の上）にラベルを配置
     const p3 = new THREE.Vector3(px / 100, 0.1, pz / 100);
     const p2 = p3.clone().project(camera);
-    const x = (p2.x * 0.5 + 0.5) * renderer.domElement.clientWidth;
-    const y = (-p2.y * 0.5 + 0.5) * renderer.domElement.clientHeight;
-    if (i === 0) console.log(`Pocket ${i}: px=${px}, pz=${pz} -> screen (${x.toFixed(0)}, ${y.toFixed(0)})`, {p3, p2});
+    const x = (p2.x * 0.5 + 0.5) * w;
+    const y = (-p2.y * 0.5 + 0.5) * h;
+    if (i === 0) console.log(`Pocket ${i}: px=${px}, pz=${pz}, p2={x:${p2.x.toFixed(3)},y:${p2.y.toFixed(3)}} -> screen (${x.toFixed(0)}, ${y.toFixed(0)}) of (${w}, ${h})`);
     const span = document.createElement('span');
     span.textContent = pocketLabels[i];
     span.style.cssText = `position:absolute;left:${x}px;top:${y}px;transform:translate(-50%,-50%);` +
-      `color:#ffff00;font-size:32px;font-weight:900;text-shadow:0 0 8px rgba(0,0,0,0.9), 0 0 4px rgba(255,255,0,0.5);letter-spacing:2px;`;
+      `color:#ffff00;font-size:32px;font-weight:900;text-shadow:0 0 8px rgba(0,0,0,0.9), 0 0 4px rgba(255,255,0,0.5);letter-spacing:2px;z-index:100;`;
     labelDiv.appendChild(span);
   }
 }
