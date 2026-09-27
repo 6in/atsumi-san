@@ -111,6 +111,7 @@
       <div class="row"><label for="cbX">手球 X</label><input id="cbX" type="range" min="-124" max="124" step="0.5" value="-50"><output id="cbXv"></output></div>
       <div class="row"><label for="cbZ">手球 Y</label><input id="cbZ" type="range" min="-60" max="60" step="0.5" value="20"><output id="cbZv"></output></div>
       <div class="row"><label class="check"><input id="cbLine" type="checkbox" checked>手球→ゴーストのライン</label></div>
+      <div class="row"><label class="check"><input id="cpLine" type="checkbox">接点ガイドライン（手球の接点→的球との接点）</label></div>
       <div class="row"><label class="check"><input id="triOn" type="checkbox">直角三角形（的球ライン延長への垂線）</label></div>
       <div class="stat" id="cutInfo"></div>
       <div class="stat" id="triInfo"></div>
@@ -254,6 +255,7 @@ const state = {
   ob: new THREE.Vector3(40, R, -20),
   cb: new THREE.Vector3(-50, R, 20),
   cbLine: true,
+  cpLine: false,
   triOn: false,
   tanOn: false,
   throwOn: false,
@@ -487,6 +489,15 @@ const cbLine = new Line2(new LineGeometry(), cbLineMat);
 cbLine.geometry.setPositions([0, 0, 0, 1, 0, 0]);
 scene.add(cbLine);
 
+// 接点ガイド: 手球上の接点（中心から的球の進行方向へ R）→ ゴーストと的球の接点
+const cpLineMat = new LineMaterial({ color: 0x7dff6b, linewidth: 2 });
+const cpLine = new Line2(new LineGeometry(), cpLineMat);
+cpLine.geometry.setPositions([0, 0, 0, 1, 0, 0]);
+const cpDotGeo = new THREE.SphereGeometry(0.45, 16, 12);
+const cpDotMat = new THREE.MeshBasicMaterial({ color: 0x7dff6b });
+const cpDots = [new THREE.Mesh(cpDotGeo, cpDotMat), new THREE.Mesh(cpDotGeo, cpDotMat)];
+scene.add(cpLine, ...cpDots);
+
 // 直角三角形: G(ゴースト中心) - F(手球から的球ライン延長への垂線の足) - C(手球中心)。ラシャ面上に描く。
 const TRI_Y = 0.05, ARC_N = 32;
 const triMat = new LineMaterial({ color: 0x4fd1ff, linewidth: 2 });
@@ -708,6 +719,13 @@ function updateScene() {
   if (state.cbLine) {
     cbLine.geometry.setPositions([state.cb.x, R, state.cb.z, gp.x, R, gp.z]);
     cbLine.computeLineDistances();
+  }
+  cpLine.visible = cpDots[0].visible = cpDots[1].visible = state.cpLine;
+  if (state.cpLine) {
+    cpDots[0].position.copy(state.cb).addScaledVector(dir, R);
+    cpDots[1].position.copy(gp).addScaledVector(dir, R);
+    const [a, b] = cpDots.map(d => d.position);
+    cpLine.geometry.setPositions([a.x, a.y, a.z, b.x, b.y, b.z]);
   }
   updateTriangle(gp, dir);
   updateTangent(gp, dir);
@@ -1013,6 +1031,7 @@ ui.cbX.addEventListener('input', () => { state.cb.x = +ui.cbX.value; updateScene
 ui.cbZ.addEventListener('input', () => { state.cb.z = +ui.cbZ.value; updateScene(); });
 $('aimCushion').addEventListener('change', e => { state.aimCushion = e.target.checked; updateScene(); });
 $('cbLine').addEventListener('change', e => { state.cbLine = e.target.checked; updateScene(); });
+$('cpLine').addEventListener('change', e => { state.cpLine = e.target.checked; updateScene(); });
 $('triOn').addEventListener('change', e => { state.triOn = e.target.checked; updateScene(); });
 $('tanOn').addEventListener('change', e => { state.tanOn = e.target.checked; updateScene(); });
 $('throwOn').addEventListener('change', e => { state.throwOn = e.target.checked; updateScene(); });
@@ -1106,7 +1125,7 @@ container.addEventListener('pointerup', endDrag);
 container.addEventListener('pointercancel', endDrag);
 
 // ---------- persistence (Dexie / IndexedDB) ----------
-const SNAPSHOT_KEYS = ['aim', 'angle', 'transparent', 'contactSize', 'arrowOn', 'arrowCount', 'arrowHeight', 'arrowStyle', 'aimCushion', 'grid', 'cbLine', 'triOn', 'tanOn', 'throwOn', 'throwSpeed', 'throwFollow', 'throwSide', 'simLoop', 'simPause'];
+const SNAPSHOT_KEYS = ['aim', 'angle', 'transparent', 'contactSize', 'arrowOn', 'arrowCount', 'arrowHeight', 'arrowStyle', 'aimCushion', 'grid', 'cbLine', 'cpLine', 'triOn', 'tanOn', 'throwOn', 'throwSpeed', 'throwFollow', 'throwSide', 'simLoop', 'simPause'];
 
 function snapshot() {
   const o = { ob: { x: state.ob.x, z: state.ob.z }, cb: { x: state.cb.x, z: state.cb.z } };
@@ -1143,6 +1162,7 @@ function syncUI() {
   ui.cbX.value = state.cb.x; ui.cbZ.value = state.cb.z;
   ui.aim.value = state.aim; ui.ang.value = state.angle;
   $('cbLine').checked = state.cbLine;
+  $('cpLine').checked = state.cpLine;
   $('aimCushion').checked = state.aimCushion;
   $('triOn').checked = state.triOn;
   $('tanOn').checked = state.tanOn;
@@ -1432,7 +1452,7 @@ function startSim() {
   const res = runSimulation();
   if (!res) { ui.simInfo.textContent = '手球とゴーストボールが重なっていて撞けません'; return; }
   // 補助表示を隠す
-  [ghost, ghostCenter, outline, groundContact, ballContact, arrowGroup, cbLine, triLine, triRight, triArc,
+  [ghost, ghostCenter, outline, groundContact, ballContact, arrowGroup, cbLine, cpLine, ...cpDots, triLine, triRight, triArc,
    tanLine, tanEnd, throwLine, compGhost, compAimLine].forEach(o => { o.visible = false; });
   triLabelVisible = false;
   const trails = [0, 1].map(i => {
@@ -1531,6 +1551,7 @@ function resize() {
   gridMats.point.resolution.set(w, h);
   gridMats.half.resolution.set(w, h);
   cbLineMat.resolution.set(w, h);
+  cpLineMat.resolution.set(w, h);
   triMat.resolution.set(w, h);
   triThinMat.resolution.set(w, h);
   tanMat.resolution.set(w, h);
