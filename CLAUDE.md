@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-厚みさん３ — ビリヤードの厚み（ゴーストボール）練習用 3D ツール。Vite でビルド（`index.html` = HTML/CSS、`src/*.js` = ES modules）。
+厚みさん — ビリヤードの厚み（ゴーストボール）練習用 3D ツール。Vite でビルド（`index.html` = HTML/CSS、`src/*.js` = ES modules）。
 GitHub Pages で https://6in.github.io/atsumi-san/ に公開。main への push で `.github/workflows/pages.yml` が `dist/` をデプロイ
 （Settings → Pages → Source は「GitHub Actions」）。`vite.config.js` は `base: './'`（Pages のサブパスと Capacitor の両方に対応）。
 
