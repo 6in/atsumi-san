@@ -143,6 +143,11 @@ groundDisc.rotateX(-Math.PI / 2);
 export const groundContact = new THREE.Mesh(groundDisc, new THREE.MeshBasicMaterial({ color: 0xff3b4e }));
 export const ballContact = new THREE.Mesh(unitSphere, new THREE.MeshBasicMaterial({ color: 0x2f8bff }));
 scene.add(groundContact, ballContact);
+// シミュレーションで手球と的球が当たった接点（球越しにも見えるよう深度テストなし）
+export const simContact = new THREE.Mesh(unitSphere, new THREE.MeshBasicMaterial({ color: 0x2f8bff, depthTest: false }));
+simContact.renderOrder = 11;
+simContact.visible = false;
+scene.add(simContact);
 
 // 接地点を中心とした半径 R の円（ボールの占有範囲をラシャ面に投影）
 export const groundRing = (() => {

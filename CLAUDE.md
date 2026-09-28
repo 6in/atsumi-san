@@ -69,7 +69,8 @@ GitHub Pages で https://6in.github.io/atsumi-san/ に公開。main への push 
   パネルの「手前」「奥」「手球の後ろ」で立ち位置を切り替える（`applyStance()`。今の頭の位置・向きを打ち消してリグを動かし、パネルも付いてくる）。
   Vision Pro は開始位置から歩いて離れると現実の風景が重なる（OS の安全機能で止められない）ので、歩かずに移動できるようにしている。
 - `simulation.js`: 2D 剛体（dt 0.5ms、最大 20 秒）。`runSimulation()` が位置と姿勢クォータニオン（角速度を積分）を記録し、
-  `tickSim()` が補間再生。最初の衝突時刻 `events.firstHit` で 0.5 秒停止（オプション）。速さは 1〜10 段階で、10 は長辺を二往復する初速 8.31 m/s（`throw.js` の `SPEED_MAX`、中央撞点で頭側クッションから撞いて頭側クッションで止まる速さをシミュレーションのモデルで逆算）。
+  `tickSim()` が補間再生。最初の衝突時刻 `events.firstHit` で 0.5 秒停止（オプション）。
+  衝突位置 `events.hitPos`（中心の中点）に接点 `simContact` を当たった瞬間から表示。再生中は手球を `simCueAlpha`（%）だけ透過（`applySimCueAlpha()`）。速さは 1〜10 段階で、10 は長辺を二往復する初速 8.31 m/s（`throw.js` の `SPEED_MAX`、中央撞点で頭側クッションから撞いて頭側クッションで止まる速さをシミュレーションのモデルで逆算）。
 
 ## 動作確認
 
