@@ -14,7 +14,7 @@ GitHub Pages で https://6in.github.io/atsumi-san/ に公開。main への push 
   `node assets/render.mjs`（playwright。`CHROMIUM=/opt/pw-browsers/chromium`）で `assets/*.png` を書き出し、
   `npx @capacitor/assets generate --android --ios --iconBackgroundColor '#1f6e44' --iconBackgroundColorDark '#1f6e44' --splashBackgroundColor '#1b1e22' --splashBackgroundColorDark '#1b1e22'`
   で `android/`・`ios/` の各サイズを生成。前景は 1.25 倍で描画（アダプティブも @capacitor/assets が 16.7% インセットで見える範囲に収める）。
-  Android 12 以降のシステムスプラッシュ背景は `styles.xml` の `windowSplashScreenBackground`。Web 用は `public/favicon.svg`・`apple-touch-icon.png`。
+  Android 12 以降のシステムスプラッシュ背景は `styles.xml` の `windowSplashScreenBackground`。Web 用は `public/favicon.png`・`apple-touch-icon.png`（`assets/icon-only.png` を縮小）。
 
 ## 利用者について
 
