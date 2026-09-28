@@ -27,9 +27,12 @@
     <!-- ゴーストボール -->
     <circle cx="416.5" cy="607.5" r="135" fill="#fff" fill-opacity="0.16" stroke="#fff" stroke-width="16" stroke-dasharray="34 24"/>
     <circle cx="416.5" cy="607.5" r="14" fill="#fff"/>
-    <!-- 左上の「厚」。前景は描画時に 1.25 倍されるので、見える位置は中心 (285, 285) 付近・約 220px -->
+    <!-- 左上の「厚」と右下の「み」。前景は描画時に 1.25 倍されるので、見える位置は中心 (285, 285) 付近・約 220px -->
     <text x="330" y="330" font-family="IPAGothic, 'Hiragino Sans', 'Noto Sans JP', sans-serif" font-weight="700" font-size="176"
       fill="#fff" text-anchor="middle" dominant-baseline="central" stroke="#0d3a22" stroke-width="6" paint-order="stroke">厚</text>
+    <!-- 右下の「み」。「厚」と点対称の位置（見える位置は中心 (739, 739) 付近） -->
+    <text x="694" y="694" font-family="IPAGothic, 'Hiragino Sans', 'Noto Sans JP', sans-serif" font-weight="700" font-size="176"
+      fill="#fff" text-anchor="middle" dominant-baseline="central" stroke="#0d3a22" stroke-width="6" paint-order="stroke">み</text>
     <!-- 接点 -->
     <circle cx="512" cy="512" r="19" fill="#4fa8ff" stroke="#fff" stroke-width="6"/>
   </g>
