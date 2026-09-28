@@ -11,7 +11,7 @@ export const state = {
   triOn: false,
   tanOn: false,
   throwOn: false,
-  shotSpeed: 3,      // 1〜10。手球の初速 = 0.5 m/s × 段階
+  shotSpeed: 3,      // 1〜10。10 で長辺を一往復する初速（throw.js の SPEED_MAX）
   throwFollow: 0,    // -1 引き … 0 ストップ … +1 押し（自然転がり）
   throwSide: 0,      // -1 左ひねり … +1 右ひねり（撞点 R/2 相当）
   simLoop: false,
