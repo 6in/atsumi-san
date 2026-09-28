@@ -137,7 +137,10 @@ export const outline = (() => {
 scene.add(outline);
 
 const unitSphere = new THREE.SphereGeometry(1, 24, 16);
-export const groundContact = new THREE.Mesh(unitSphere, new THREE.MeshBasicMaterial({ color: 0xff3b4e }));
+// 接地点: ラシャ面に置いた平らな円（半径 1、接点サイズで拡大）
+const groundDisc = new THREE.CircleGeometry(1, 32);
+groundDisc.rotateX(-Math.PI / 2);
+export const groundContact = new THREE.Mesh(groundDisc, new THREE.MeshBasicMaterial({ color: 0xff3b4e }));
 export const ballContact = new THREE.Mesh(unitSphere, new THREE.MeshBasicMaterial({ color: 0x2f8bff }));
 scene.add(groundContact, ballContact);
 

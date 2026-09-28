@@ -55,7 +55,7 @@ export function updateScene() {
   ghostCenter.position.copy(gp);
   const s = CONTACT_SIZES[state.contactSize];
   groundContact.scale.setScalar(s);
-  groundContact.position.set(gp.x, 0, gp.z);
+  groundContact.position.set(gp.x, 0.07, gp.z);   // 接地円の線（0.06）より少し上
   groundRing.position.set(gp.x, 0, gp.z);
   ballContact.scale.setScalar(s);
   ballContact.position.copy(gp).add(state.ob).multiplyScalar(0.5);
