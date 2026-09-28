@@ -59,6 +59,12 @@ GitHub Pages で https://6in.github.io/atsumi-san/ に公開。main への push 
 - `ui.js`: `initUI()`（フォーム・ボタンのイベント）、`syncUI()`（state → フォーム）、`syncArrowUI()`。
 - `menu.js`: ツールバーのプルダウン開閉。 `drag.js`: ボールのドラッグ。 `labels.js`: ポケットラベル A〜F。
 - `persistence.js`: `snapshot()` / `applySnapshot()`（旧形式の読み替えもここ）/ `scheduleAutosave()`（400ms 間引き）/ `saveLayout()` / `restoreLast()`。
+- `xr.js`: VR（WebXR `immersive-vr`、Quest / Vision Pro 想定）。対応端末でだけ `#vrBtn` を表示。
+  シーンは cm のまま、カメラとコントローラーを 100 倍したリグに入れて実物大（床からラシャ面 80cm、台の +Z 側の長辺の横に立つ）。
+  `local-floor` を優先し、使えなければ `local`。XR の near/far はメートル（開始時に 0.02 / 50 にし、終了時に戻す）。
+  リグ拡大で three.js の両目まとめた視錐台がずれて近くの物体が消えるので、VR 中は毎フレーム `frustumCulled = false`。
+  操作は select で統一（Quest のトリガー / Vision Pro の視線＋ピンチ）: ボールに当てて押している間ドラッグ（`drag.js` の `placeBall()` を共用）、
+  浮いているパネル（キャンバス描画、カット角・結果表示）の「ショット」「停止」ボタン。Quest のグリップでもショット。
 - `simulation.js`: 2D 剛体（dt 0.5ms、最大 20 秒）。`runSimulation()` が位置と姿勢クォータニオン（角速度を積分）を記録し、
   `tickSim()` が補間再生。最初の衝突時刻 `events.firstHit` で 0.5 秒停止（オプション）。速さは 1〜10 段階で、10 は長辺を二往復する初速 8.31 m/s（`throw.js` の `SPEED_MAX`、中央撞点で頭側クッションから撞いて頭側クッションで止まる速さをシミュレーションのモデルで逆算）。
 
@@ -87,8 +93,9 @@ await p.goto('http://localhost:4173/');
 
 ## 検討中の課題
 
-- VR 対応（WebXR）: three.js の `renderer.xr` + VRButton。シーンを 1/100 して実物大、台の高さ約 80cm。
-  VR 中は HTML メニューが出ないので、まずは「見る＋ショット」のみ。Artifact の埋め込みでは XR が許可されない可能性があり、Pages で試す。
+- VR 対応（WebXR）: 見る・ショット・配置まで実装（`xr.js`）。Quest 3 エミュレーター（npm の `iwer`、`installRuntime({ forceInstall: true })`
+  を esbuild で IIFE にして Playwright の `addInitScript` で注入）で動作確認済み。実機（Quest / Vision Pro）は未確認。
+  次の候補: ガイド表示の切り替え、利き目・視点の移動（テレポート）、MR（パススルー）。
 - アプリ化（Capacitor）: 導入済み。Android は Releases の debug APK で実機確認済み（表示・保存・タッチ操作とも問題なし）。
   iOS の実機確認、リリース署名（Play App Signing 用アップロード鍵）とストア公開が残り。
   Google Play は新規の個人アカウントだとクローズドテスト（テスター 12 人・14 日間）が必要。

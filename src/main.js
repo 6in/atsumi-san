@@ -11,10 +11,12 @@ import { initDrag } from './drag.js';
 import { restoreLast } from './persistence.js';
 import { trailMats, tickSim } from './simulation.js';
 import { updatePocketLabels } from './labels.js';
+import { initXR, xrTick } from './xr.js';
 
 initUI();
 initDrag();
 initMenu();
+initXR();
 
 function resize() {
   const w = window.innerWidth, h = window.innerHeight;
@@ -44,9 +46,13 @@ restoreLast();
 
 renderer.setAnimationLoop(now => {
   tickSim(now);
-  controls.update();
+  if (renderer.xr.isPresenting) {
+    xrTick();
+  } else {
+    controls.update();
+    updateTriLabel();
+    updatePocketLabels();
+  }
   updateOutline();
-  updateTriLabel();
-  updatePocketLabels();
   renderer.render(scene, camera);
 });
