@@ -11,7 +11,7 @@ import { placeBall } from './drag.js';
 // （XR の 1 m = シーンの 100 cm）。台の横（+Z 側の長辺）に立ち、台の方（−Z）を向いて始まる。
 // 操作は WebXR の select（Quest のトリガー / Vision Pro の視線＋ピンチ）で統一:
 // ボールに当てて押している間はドラッグで配置、浮いているパネルのボタンでショット・停止。
-const TABLE_H = 80;       // 床からラシャ面まで [cm]
+const TABLE_H = 70;       // 床からラシャ面まで [cm]
 const EYE_H = 160;        // local-floor が使えないときに想定する目の高さ [cm]
 const STAND_Z = TW / 2 + CUSHION_W + RAIL_W + 40;
 

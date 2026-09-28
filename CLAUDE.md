@@ -60,7 +60,7 @@ GitHub Pages で https://6in.github.io/atsumi-san/ に公開。main への push 
 - `menu.js`: ツールバーのプルダウン開閉。 `drag.js`: ボールのドラッグ。 `labels.js`: ポケットラベル A〜F。
 - `persistence.js`: `snapshot()` / `applySnapshot()`（旧形式の読み替えもここ）/ `scheduleAutosave()`（400ms 間引き）/ `saveLayout()` / `restoreLast()`。
 - `xr.js`: VR（WebXR `immersive-vr`、Quest / Vision Pro 想定）。対応端末でだけ `#vrBtn` を表示。
-  シーンは cm のまま、カメラとコントローラーを 100 倍したリグに入れて実物大（床からラシャ面 80cm、台の +Z 側の長辺の横に立つ）。
+  シーンは cm のまま、カメラとコントローラーを 100 倍したリグに入れて実物大（床からラシャ面 70cm、台の +Z 側の長辺の横に立つ）。
   `local-floor` を優先し、使えなければ `local`。XR の near/far はメートル（開始時に 0.02 / 50 にし、終了時に戻す）。
   リグ拡大で three.js の両目まとめた視錐台がずれて近くの物体が消えるので、VR 中は毎フレーム `frustumCulled = false`。
   操作は select で統一（Quest のトリガー / Vision Pro の視線＋ピンチ）。入力は 4 つまで受ける（hand-tracking を要求すると Vision Pro の
