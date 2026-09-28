@@ -324,15 +324,17 @@ export function updateTriLabel() {
 }
 
 // 透視投影でのシルエット円（カメラから見た輪郭）を毎フレーム合わせる
+const eyePos = new THREE.Vector3();
 export function updateOutline() {
   if (!outline.visible) return;
   const c = ghost.position;
-  tmp.subVectors(camera.position, c);
+  const eye = camera.getWorldPosition(eyePos);   // VR 中はカメラがリグの子になるのでワールド座標で
+  tmp.subVectors(eye, c);
   const d = tmp.length();
   if (d <= R) { outline.visible = false; return; }
   tmp.normalize();
   const r = (R * Math.sqrt(d * d - R * R)) / d;
   outline.position.copy(c).addScaledVector(tmp, (R * R) / d);
   outline.scale.setScalar(r);
-  outline.lookAt(camera.position);
+  outline.lookAt(eye);
 }

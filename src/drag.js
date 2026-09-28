@@ -19,6 +19,15 @@ function setRay(e) {
   raycaster.setFromCamera(ndc, camera);
 }
 
+// ボール（'cb' | 'ob'）を台上の点へ移動。0.5cm 単位でプレイエリア内に収める（VR の配置も共用）
+export function placeBall(key, p) {
+  const v = state[key];
+  v.x = THREE.MathUtils.clamp(Math.round(p.x * 2) / 2, -TL / 2 + R, TL / 2 - R);
+  v.z = THREE.MathUtils.clamp(Math.round(p.z * 2) / 2, -TW / 2 + R, TW / 2 - R);
+  syncUI();
+  updateScene();
+}
+
 export function initDrag() {
   container.addEventListener('pointerdown', e => {
     if (!e.isPrimary) return;
@@ -35,11 +44,7 @@ export function initDrag() {
     if (!dragging || e.pointerId !== dragging.id) return;
     setRay(e);
     if (!raycaster.ray.intersectPlane(dragPlane, hitPt)) return;
-    const v = state[dragging.key];
-    v.x = THREE.MathUtils.clamp(Math.round(hitPt.x * 2) / 2, -TL / 2 + R, TL / 2 - R);
-    v.z = THREE.MathUtils.clamp(Math.round(hitPt.z * 2) / 2, -TW / 2 + R, TW / 2 - R);
-    syncUI();
-    updateScene();
+    placeBall(dragging.key, hitPt);
   });
 
   function endDrag(e) {

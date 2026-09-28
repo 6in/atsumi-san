@@ -44,6 +44,8 @@
   #actions button { width: 44px; height: 44px; padding: 0; border-radius: 50%; display: grid; place-items: center; }
   #actions svg { width: 22px; height: 22px; fill: currentColor; }
   #simShot { background: var(--accent); color: #1b1e22; border-color: var(--accent); }
+  #actions button[hidden] { display: none; }
+  #vrBtn { font: 800 14px/1 system-ui, sans-serif; letter-spacing: .02em; }
   #simShot:active { background: #e08a10; }
 
   /* プルダウンメニュー（1 つだけ開く。位置は JS でボタンの下に合わせる） */
@@ -166,6 +168,7 @@
 <div id="actions">
   <button id="simShot" type="button" title="ショット" aria-label="ショット"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l11-6.5z"/></svg></button>
   <button id="simReset" type="button" title="停止して配置に戻す" aria-label="停止して配置に戻す"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6.5" y="6.5" width="11" height="11" rx="1.5"/></svg></button>
+  <button id="vrBtn" type="button" title="VR で見る" aria-label="VR で見る" hidden>VR</button>
 </div>
 
 <div class="menu" id="mBall" hidden>
