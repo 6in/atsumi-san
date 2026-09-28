@@ -10,6 +10,11 @@ GitHub Pages で https://6in.github.io/atsumi-san/ に公開。main への push 
   `npm run cap:android` / `cap:ios` で Android Studio / Xcode を開く。
   `.github/workflows/android.yml` が push ごとに debug APK をビルドし、Actions の成果物 `app-debug` に置く。
   このコンテナは Google Maven / Gradle 配布元に届かないので Android のビルドは Actions で確認する。iOS のビルドは Mac の Xcode で。
+- アイコン・スプラッシュ: 原本は `assets/icon.svg`（`#bg` ラシャの緑、`#fg` 的球・ゴースト・接点・ライン）。
+  `node assets/render.mjs`（playwright。`CHROMIUM=/opt/pw-browsers/chromium`）で `assets/*.png` を書き出し、
+  `npx @capacitor/assets generate --android --ios --iconBackgroundColor '#1f6e44' --iconBackgroundColorDark '#1f6e44' --splashBackgroundColor '#1b1e22' --splashBackgroundColorDark '#1b1e22'`
+  で `android/`・`ios/` の各サイズを生成。前景は 1.25 倍で描画（アダプティブも @capacitor/assets が 16.7% インセットで見える範囲に収める）。
+  Android 12 以降のシステムスプラッシュ背景は `styles.xml` の `windowSplashScreenBackground`。Web 用は `public/favicon.png`・`apple-touch-icon.png`（`assets/icon-only.png` を縮小）。
 
 ## 利用者について
 
@@ -82,4 +87,4 @@ await p.goto('http://localhost:4173/');
 
 - VR 対応（WebXR）: three.js の `renderer.xr` + VRButton。シーンを 1/100 して実物大、台の高さ約 80cm。
   VR 中は HTML メニューが出ないので、まずは「見る＋ショット」のみ。Artifact の埋め込みでは XR が許可されない可能性があり、Pages で試す。
-- アプリ化（Capacitor）: 導入済み。実機での確認（セーフエリア / Android の edge-to-edge 表示、IndexedDB の保存、タッチ操作）、アイコン・スプラッシュ、署名とストア公開が残り。
+- アプリ化（Capacitor）: 導入済み。実機での確認（セーフエリア / Android の edge-to-edge 表示、IndexedDB の保存、タッチ操作）、署名とストア公開が残り。

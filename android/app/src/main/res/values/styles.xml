@@ -18,5 +18,7 @@
 
     <style name="AppTheme.NoActionBarLaunch" parent="Theme.SplashScreen">
         <item name="android:background">@drawable/splash</item>
+        <!-- Android 12 以降のシステムスプラッシュ（アイコン＋背景色）。アプリの背景色に合わせる -->
+        <item name="windowSplashScreenBackground">#1b1e22</item>
     </style>
 </resources>
