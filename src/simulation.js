@@ -214,9 +214,12 @@ export function startSim() {
 
 const HIT_PAUSE = 0.5;   // 実時間 [s]
 
-export function tickSim(now) {
+export function tickSim() {
   if (!sim) return;
-  const dt = (now - sim.last) / 1000;
+  // 描画ループの時刻は VR 中は XR の時計になり、端末（Vision Pro など）によっては performance.now() と基準が違う。
+  // 開始時刻と同じ時計で測り、タブ切り替えなどの大きな飛びは 0.25 秒で頭打ち
+  const now = performance.now();
+  const dt = THREE.MathUtils.clamp((now - sim.last) / 1000, 0, 0.25);
   sim.last = now;
   if (sim.pause > 0) { sim.pause -= dt; return; }
   const rate = +document.querySelector('input[name=simRate]:checked').value;

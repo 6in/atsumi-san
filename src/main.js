@@ -44,8 +44,8 @@ updateScene();
 setView('behind');
 restoreLast();
 
-renderer.setAnimationLoop(now => {
-  tickSim(now);
+renderer.setAnimationLoop(() => {
+  tickSim();
   if (renderer.xr.isPresenting) {
     xrTick();
   } else {
