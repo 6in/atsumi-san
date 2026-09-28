@@ -89,4 +89,6 @@ await p.goto('http://localhost:4173/');
 
 - VR 対応（WebXR）: three.js の `renderer.xr` + VRButton。シーンを 1/100 して実物大、台の高さ約 80cm。
   VR 中は HTML メニューが出ないので、まずは「見る＋ショット」のみ。Artifact の埋め込みでは XR が許可されない可能性があり、Pages で試す。
-- アプリ化（Capacitor）: 導入済み。実機での確認（セーフエリア / Android の edge-to-edge 表示、IndexedDB の保存、タッチ操作）、署名とストア公開が残り。
+- アプリ化（Capacitor）: 導入済み。Android は Releases の debug APK で実機確認済み（表示・保存・タッチ操作とも問題なし）。
+  iOS の実機確認、リリース署名（Play App Signing 用アップロード鍵）とストア公開が残り。
+  Google Play は新規の個人アカウントだとクローズドテスト（テスター 12 人・14 日間）が必要。
