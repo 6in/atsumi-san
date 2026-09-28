@@ -58,7 +58,7 @@ GitHub Pages で https://6in.github.io/atsumi-san/ に公開。main への push 
 - `menu.js`: ツールバーのプルダウン開閉。 `drag.js`: ボールのドラッグ。 `labels.js`: ポケットラベル A〜F。
 - `persistence.js`: `snapshot()` / `applySnapshot()`（旧形式の読み替えもここ）/ `scheduleAutosave()`（400ms 間引き）/ `saveLayout()` / `restoreLast()`。
 - `simulation.js`: 2D 剛体（dt 0.5ms、最大 20 秒）。`runSimulation()` が位置と姿勢クォータニオン（角速度を積分）を記録し、
-  `tickSim()` が補間再生。最初の衝突時刻 `events.firstHit` で 0.5 秒停止（オプション）。速さは 1〜10 段階 × 0.5 m/s。
+  `tickSim()` が補間再生。最初の衝突時刻 `events.firstHit` で 0.5 秒停止（オプション）。速さは 1〜10 段階で、10 は長辺を二往復する初速 8.31 m/s（`throw.js` の `SPEED_MAX`、中央撞点で頭側クッションから撞いて頭側クッションで止まる速さをシミュレーションのモデルで逆算）。
 
 ## 動作確認
 

@@ -5,7 +5,10 @@ import { state } from './state.js';
 // ---------- throw (Alciatore TP A.14) ----------
 // ボール間摩擦: μ(v_rel) = a + b·exp(−c·v_rel)  [m/s]
 // スロウ角: θ = atan( min(μ·v·cosφ / v_rel, 1/7) · |接線方向の滑り| / (v·cosφ) )
-export const shotSpeedMS = () => 0.5 * state.shotSpeed;   // m/s
+// 段階 10 の初速 [m/s]: 頭側クッションに接した手球を中央撞点で撞くと、長辺を二往復して頭側クッションで止まる速さ
+// （simulation.js の摩擦・クッションのモデルで逆算。モデルを変えたら求め直す）。1〜10 はこれに比例
+const SPEED_MAX = 8.31;
+export const shotSpeedMS = () => SPEED_MAX * state.shotSpeed / 10;   // m/s
 export const R_M = R / 100;                           // ボール半径 [m]
 export const muBall = vr => 9.951e-3 + 0.108 * Math.exp(-1.088 * vr);
 

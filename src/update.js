@@ -55,7 +55,7 @@ export function updateScene() {
   ghostCenter.position.copy(gp);
   const s = CONTACT_SIZES[state.contactSize];
   groundContact.scale.setScalar(s);
-  groundContact.position.set(gp.x, 0, gp.z);
+  groundContact.position.set(gp.x, 0.07, gp.z);   // 接地円の線（0.06）より少し上
   groundRing.position.set(gp.x, 0, gp.z);
   ballContact.scale.setScalar(s);
   ballContact.position.copy(gp).add(state.ob).multiplyScalar(0.5);
@@ -159,7 +159,7 @@ export function updateScene() {
   gridHalf.visible = state.grid === 'half';
 
   ui.angv.value = state.angle.toFixed(2) + '°';
-  $('tSpeedv').value = `${state.shotSpeed}（${shotSpeedMS().toFixed(1)}m/s）`;
+  $('tSpeedv').value = `${state.shotSpeed}（${shotSpeedMS().toFixed(2)}m/s）`;
   const f = state.throwFollow, sd = state.throwSide;
   $('tFollowv').value = f === 0 ? 'ストップ' : (f > 0 ? '押し' : '引き') + Math.abs(f);
   $('tSidev').value = sd === 0 ? 'なし' : (sd > 0 ? '右' : '左') + Math.abs(sd);
