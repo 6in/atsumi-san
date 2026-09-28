@@ -226,7 +226,7 @@ export function startSim() {
   applySimCueAlpha();
   if (res.events.hitPos) {
     simContact.position.set(res.events.hitPos[0], R, res.events.hitPos[1]);
-    simContact.scale.setScalar(CONTACT_SIZES[state.contactSize] * 0.4);   // 点として見える程度に小さく
+    simContact.scale.setScalar(CONTACT_SIZES[state.contactSize] * 0.2);   // 点として見える程度に小さく
   }
   const e = res.events;
   const fmt = (i, name) => e.pocket[i] !== null ? `${name}: ポケット` : `${name}: クッション ${e.cushions[i]} 回`;
