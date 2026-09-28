@@ -21,6 +21,7 @@ npm run cap:ios      # Xcode で開く（Mac）
 ```
 
 push ごとに GitHub Actions が Android の debug APK をビルドします（Actions の成果物 `app-debug`）。
+main の最新版は Releases からダウンロードできます: https://github.com/6in/atsumi-san/releases/latest
 
 - 的球・手球は台上でドラッグして配置
 - ゴーストボール、接点、厚みの縦割り・壁、タンジェントライン、スロウ表示

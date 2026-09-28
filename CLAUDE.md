@@ -9,6 +9,8 @@ GitHub Pages で https://6in.github.io/atsumi-san/ に公開。main への push 
   `android/`・`ios/`（iOS は SPM、CocoaPods なし）をコミット。Web を変えたら `npm run cap:sync`（build + `cap sync`）。
   `npm run cap:android` / `cap:ios` で Android Studio / Xcode を開く。
   `.github/workflows/android.yml` が push ごとに debug APK をビルドし、Actions の成果物 `app-debug` に置く。
+  main では Releases の `latest`（https://github.com/6in/atsumi-san/releases/download/latest/atsumi-san-debug.apk）を毎回作り直す。
+  debug 署名は `android/app/debug.keystore`（コミット済みの debug 専用鍵）で固定し、上書きインストールできるようにしている。
   このコンテナは Google Maven / Gradle 配布元に届かないので Android のビルドは Actions で確認する。iOS のビルドは Mac の Xcode で。
 - アイコン・スプラッシュ: 原本は `assets/icon.svg`（`#bg` ラシャの緑、`#fg` 的球・ゴースト・接点・ライン）。
   `node assets/render.mjs`（playwright。`CHROMIUM=/opt/pw-browsers/chromium`）で `assets/*.png` を書き出し、
