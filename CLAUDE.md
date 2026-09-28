@@ -66,6 +66,8 @@ GitHub Pages で https://6in.github.io/atsumi-san/ に公開。main への push 
   操作は select で統一（Quest のトリガー / Vision Pro の視線＋ピンチ）。入力は 4 つまで受ける（hand-tracking を要求すると Vision Pro の
   視線＋ピンチが 3 番目以降になるため要求しない）: ボールに当てて押している間ドラッグ（`drag.js` の `placeBall()` を共用）、
   浮いているパネル（キャンバス描画、カット角・結果表示）の「ショット」「停止」ボタン。Quest のグリップでもショット。
+  パネルの「手前」「奥」「手球の後ろ」で立ち位置を切り替える（`applyStance()`。今の頭の位置・向きを打ち消してリグを動かし、パネルも付いてくる）。
+  Vision Pro は開始位置から歩いて離れると現実の風景が重なる（OS の安全機能で止められない）ので、歩かずに移動できるようにしている。
 - `simulation.js`: 2D 剛体（dt 0.5ms、最大 20 秒）。`runSimulation()` が位置と姿勢クォータニオン（角速度を積分）を記録し、
   `tickSim()` が補間再生。最初の衝突時刻 `events.firstHit` で 0.5 秒停止（オプション）。速さは 1〜10 段階で、10 は長辺を二往復する初速 8.31 m/s（`throw.js` の `SPEED_MAX`、中央撞点で頭側クッションから撞いて頭側クッションで止まる速さをシミュレーションのモデルで逆算）。
 
@@ -95,8 +97,8 @@ await p.goto('http://localhost:4173/');
 ## 検討中の課題
 
 - VR 対応（WebXR）: 見る・ショット・配置まで実装（`xr.js`）。Quest 3 エミュレーター（npm の `iwer`、`installRuntime({ forceInstall: true })`
-  を esbuild で IIFE にして Playwright の `addInitScript` で注入）で動作確認済み。実機（Quest / Vision Pro）は未確認。
-  次の候補: ガイド表示の切り替え、利き目・視点の移動（テレポート）、MR（パススルー）。
+  を esbuild で IIFE にして Playwright の `addInitScript` で注入）で動作確認済み。
+  Vision Pro 実機で配置・ショット・再生を確認済み。次の候補: ガイド表示の切り替え、撞点・速さの調整、MR（パススルー）。
 - アプリ化（Capacitor）: 導入済み。Android は Releases の debug APK で実機確認済み（表示・保存・タッチ操作とも問題なし）。
   iOS の実機確認、リリース署名（Play App Signing 用アップロード鍵）とストア公開が残り。
   Google Play は新規の個人アカウントだとクローズドテスト（テスター 12 人・14 日間）が必要。
