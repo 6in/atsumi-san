@@ -12,6 +12,16 @@ npm run build    # dist/ に出力
 
 main への push で GitHub Actions が GitHub Pages にデプロイします。
 
+### iOS / Android（Capacitor）
+
+```sh
+npm run cap:sync     # Web をビルドして android/・ios/ に反映
+npm run cap:android  # Android Studio で開く
+npm run cap:ios      # Xcode で開く（Mac）
+```
+
+push ごとに GitHub Actions が Android の debug APK をビルドします（Actions の成果物 `app-debug`）。
+
 - 的球・手球は台上でドラッグして配置
 - ゴーストボール、接点、厚みの縦割り・壁、タンジェントライン、スロウ表示
 - ショットのシミュレーションと再生（回転の表示付き）

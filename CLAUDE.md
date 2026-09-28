@@ -5,6 +5,11 @@ GitHub Pages で https://6in.github.io/atsumi-san/ に公開。main への push 
 （Settings → Pages → Source は「GitHub Actions」）。`vite.config.js` は `base: './'`（Pages のサブパスと Capacitor の両方に対応）。
 
 - `npm run dev` / `npm run build`（→ `dist/`）/ `npm run preview`
+- アプリ: Capacitor 8（`capacitor.config.json`、appId `io.github.sixin.atsumisan`、アプリ名「厚みさん」、webDir `dist`）。
+  `android/`・`ios/`（iOS は SPM、CocoaPods なし）をコミット。Web を変えたら `npm run cap:sync`（build + `cap sync`）。
+  `npm run cap:android` / `cap:ios` で Android Studio / Xcode を開く。
+  `.github/workflows/android.yml` が push ごとに debug APK をビルドし、Actions の成果物 `app-debug` に置く。
+  このコンテナは Google Maven / Gradle 配布元に届かないので Android のビルドは Actions で確認する。iOS のビルドは Mac の Xcode で。
 
 ## 利用者について
 
@@ -77,4 +82,4 @@ await p.goto('http://localhost:4173/');
 
 - VR 対応（WebXR）: three.js の `renderer.xr` + VRButton。シーンを 1/100 して実物大、台の高さ約 80cm。
   VR 中は HTML メニューが出ないので、まずは「見る＋ショット」のみ。Artifact の埋め込みでは XR が許可されない可能性があり、Pages で試す。
-- アプリ化（Capacitor）: Vite 導入・ファイル分割済み（three/dexie は同梱）。次は Capacitor で iOS/Android。
+- アプリ化（Capacitor）: 導入済み。実機での確認（セーフエリア / Android の edge-to-edge 表示、IndexedDB の保存、タッチ操作）、アイコン・スプラッシュ、署名とストア公開が残り。
