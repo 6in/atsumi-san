@@ -1,63 +1,70 @@
 import * as THREE from 'three';
-import { R, TW, CUSHION_W, RAIL_W } from './constants.js';
+import { R, TL, TW, CUSHION_W, RAIL_W } from './constants.js';
+import { state } from './state.js';
 import { $, ui } from './dom.js';
 import { renderer, scene, camera, controls } from './scene.js';
 import { obBall, cueBall } from './objects.js';
 import { startSim } from './simulation.js';
 import { updateScene } from './update.js';
 import { placeBall } from './drag.js';
+import { ghostPos } from './aim.js';
 
 // VR（WebXR）。シーンは cm 単位のまま、カメラとコントローラーを 100 倍したリグに入れて実物大にする
 // （XR の 1 m = シーンの 100 cm）。台の横（+Z 側の長辺）に立ち、台の方（−Z）を向いて始まる。
 // 操作は WebXR の select（Quest のトリガー / Vision Pro の視線＋ピンチ）で統一:
-// ボールに当てて押している間はドラッグで配置、浮いているパネルのボタンでショット・停止。
+// ボールに当てて押している間はドラッグで配置、浮いているパネルのボタンでショット・停止・立ち位置の切り替え。
+// 立ち位置はリグを動かして変える（Vision Pro は開始位置から歩いて離れると現実の風景が重なるため）。
 const TABLE_H = 70;       // 床からラシャ面まで [cm]
 const EYE_H = 160;        // local-floor が使えないときに想定する目の高さ [cm]
-const STAND_Z = TW / 2 + CUSHION_W + RAIL_W + 40;
+const OUTER_X = TL / 2 + CUSHION_W + RAIL_W, OUTER_Z = TW / 2 + CUSHION_W + RAIL_W;   // 台の外枠
+const STAND_GAP = 40;     // 外枠から立つ位置まで [cm]
 
 const rig = new THREE.Group();
 rig.scale.setScalar(100);
 scene.add(rig);
 
-// 操作パネル（情報表示とボタン）。手前のレールの少し上、右寄りに浮かべ、開始時の頭の位置に向ける
-const PANEL_W = 40, PANEL_H = 20;
+// 操作パネル（情報表示とボタン）。立ち位置の右前、ラシャ面の少し上に浮かべて頭の方へ向ける
+const PANEL_W = 40, PANEL_H = 25;
+const CW = 1024, CH = 640;   // キャンバス
 const panelCanvas = document.createElement('canvas');
-panelCanvas.width = 1024; panelCanvas.height = 512;
+panelCanvas.width = CW; panelCanvas.height = CH;
 const panelTex = new THREE.CanvasTexture(panelCanvas);
 panelTex.colorSpace = THREE.SRGBColorSpace;
 const panel = new THREE.Mesh(new THREE.PlaneGeometry(PANEL_W, PANEL_H),
   new THREE.MeshBasicMaterial({ map: panelTex, transparent: true }));
-panel.position.set(30, 38, TW / 2 + CUSHION_W + RAIL_W + 6);
 panel.visible = false;
 scene.add(panel);
 
 // ボタンの領域（キャンバス座標）
+const ROW1 = { y: 236, h: 170, font: 72 }, ROW2 = { y: 436, h: 164, font: 56 };
 const BUTTONS = [
-  { id: 'shot', label: 'ショット', x: 40, w: 452, color: '#ff9f1a', text: '#1b1e22' },
-  { id: 'stop', label: '停止', x: 532, w: 452, color: '#3a3f46', text: '#f2f2f2' },
+  { id: 'shot', label: 'ショット', x: 40, w: 452, ...ROW1, color: '#ff9f1a', text: '#1b1e22' },
+  { id: 'stop', label: '停止', x: 532, w: 452, ...ROW1, color: '#3a3f46', text: '#f2f2f2' },
+  { id: 'near', label: '手前', x: 40, w: 292, ...ROW2, color: '#2c4f6e', text: '#f2f2f2' },
+  { id: 'far', label: '奥', x: 366, w: 292, ...ROW2, color: '#2c4f6e', text: '#f2f2f2' },
+  { id: 'cue', label: '手球の後ろ', x: 692, w: 292, ...ROW2, color: '#2c4f6e', text: '#f2f2f2' },
 ];
-const BTN_Y = 290, BTN_H = 180;
 let panelText = null;
 
 function drawPanel(lines) {
   const ctx = panelCanvas.getContext('2d');
-  ctx.clearRect(0, 0, 1024, 512);
+  ctx.clearRect(0, 0, CW, CH);
   ctx.fillStyle = 'rgba(24, 27, 31, 0.92)';
-  ctx.beginPath(); ctx.roundRect(0, 0, 1024, 512, 36); ctx.fill();
+  ctx.beginPath(); ctx.roundRect(0, 0, CW, CH, 36); ctx.fill();
   ctx.fillStyle = '#f2f2f2';
   ctx.font = '600 40px system-ui, sans-serif';
   ctx.textBaseline = 'top';
-  lines.forEach((t, i) => ctx.fillText(t, 40, 36 + i * 60, 944));
+  lines.forEach((t, i) => ctx.fillText(t, 40, 30 + i * 56, 944));
   ctx.fillStyle = '#9aa3ad';
-  ctx.font = '500 32px system-ui, sans-serif';
-  ctx.fillText('ボタンやボールを見て指でつまむ（Quest はトリガー）', 40, 226, 944);
+  ctx.font = '500 30px system-ui, sans-serif';
+  ctx.fillText('ボタンやボールを見て指でつまむ（Quest はトリガー）', 40, 160, 944);
   for (const b of BUTTONS) {
     ctx.fillStyle = b.color;
-    ctx.beginPath(); ctx.roundRect(b.x, BTN_Y, b.w, BTN_H, 28); ctx.fill();
+    ctx.beginPath(); ctx.roundRect(b.x, b.y, b.w, b.h, 28); ctx.fill();
     ctx.fillStyle = b.text;
-    ctx.font = '700 72px system-ui, sans-serif';
+    ctx.font = `700 ${b.font}px system-ui, sans-serif`;
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText(b.label, b.x + b.w / 2, BTN_Y + BTN_H / 2);
+    ctx.fillText(b.label, b.x + b.w / 2, b.y + b.h / 2);
     ctx.textAlign = 'left'; ctx.textBaseline = 'top';
   }
   panelTex.needsUpdate = true;
@@ -65,8 +72,43 @@ function drawPanel(lines) {
 
 // パネル上の当たり位置（uv）→ ボタン
 function buttonAt(uv) {
-  const x = uv.x * 1024, y = (1 - uv.y) * 512;
-  return BUTTONS.find(b => x >= b.x && x <= b.x + b.w && y >= BTN_Y && y <= BTN_Y + BTN_H)?.id;
+  const x = uv.x * CW, y = (1 - uv.y) * CH;
+  return BUTTONS.find(b => x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h)?.id;
+}
+
+// 立ち位置（台の座標 [cm] と向いている水平方向）
+function stanceFor(kind) {
+  if (kind === 'near') return { x: 0, z: OUTER_Z + STAND_GAP, dx: 0, dz: -1 };
+  if (kind === 'far') return { x: 0, z: -(OUTER_Z + STAND_GAP), dx: 0, dz: 1 };
+  // 手球の後ろ: 手球→ゴーストの延長線を手球から後ろへたどり、台の外枠を出たところに立って撞く方向を向く
+  const gp = ghostPos(), cb = state.cb;
+  let dx = gp.x - cb.x, dz = gp.z - cb.z;
+  const len = Math.hypot(dx, dz);
+  if (len < 1e-6) { dx = 0; dz = -1; } else { dx /= len; dz /= len; }
+  let t = Infinity;
+  if (dx > 1e-9) t = Math.min(t, (cb.x + OUTER_X) / dx);
+  if (dx < -1e-9) t = Math.min(t, (cb.x - OUTER_X) / dx);
+  if (dz > 1e-9) t = Math.min(t, (cb.z + OUTER_Z) / dz);
+  if (dz < -1e-9) t = Math.min(t, (cb.z - OUTER_Z) / dz);
+  t += STAND_GAP;
+  return { x: cb.x - dx * t, z: cb.z - dz * t, dx, dz };
+}
+
+const euler = new THREE.Euler();
+// 今の頭の位置・向き（リグ内、メートル）を打ち消して、頭がちょうど立ち位置に来て指定の方向を向くようにリグを置く
+function applyStance(kind) {
+  const s = stanceFor(kind);
+  const headYaw = euler.setFromQuaternion(camera.quaternion, 'YXZ').y;
+  const ry = Math.atan2(-s.dx, -s.dz) - headYaw;
+  const c = Math.cos(ry), sn = Math.sin(ry);
+  const hx = camera.position.x * 100, hz = camera.position.z * 100;
+  rig.rotation.y = ry;
+  rig.position.x = s.x - (hx * c + hz * sn);
+  rig.position.z = s.z - (-hx * sn + hz * c);
+  // パネルは立ち位置から見て右 30cm・前 34cm、ラシャ面から 38cm 上
+  const rx = -s.dz, rz = s.dx;
+  panel.position.set(s.x + rx * 30 + s.dx * 34, 38, s.z + rz * 30 + s.dz * 34);
+  panel.lookAt(s.x, EYE_H - TABLE_H, s.z);
 }
 
 const raycaster = new THREE.Raycaster();
@@ -91,6 +133,7 @@ function onSelectStart(c) {
     const id = buttonAt(hit.uv);
     if (id === 'shot') startSim();
     else if (id === 'stop') { updateScene(); ui.simInfo.textContent = 'リセットしました'; }
+    else if (id) applyStance(id);
     return;
   }
   drag = { c, key: hit.object === cueBall ? 'cb' : 'ob' };
@@ -141,8 +184,8 @@ function onSessionStart(floor) {
   camera.near = 0.02; camera.far = 50;
   camera.position.set(0, 0, 0); camera.quaternion.identity();
   rig.add(camera);
-  rig.position.set(0, floor ? -TABLE_H : EYE_H - TABLE_H, STAND_Z);
-  panel.lookAt(0, EYE_H - TABLE_H, STAND_Z);
+  rig.position.y = floor ? -TABLE_H : EYE_H - TABLE_H;
+  applyStance('near');
   panel.visible = true;
   panelText = null;
 }
