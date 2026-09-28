@@ -48,6 +48,9 @@ function drawPanel(lines) {
   ctx.font = '600 40px system-ui, sans-serif';
   ctx.textBaseline = 'top';
   lines.forEach((t, i) => ctx.fillText(t, 40, 36 + i * 60, 944));
+  ctx.fillStyle = '#9aa3ad';
+  ctx.font = '500 32px system-ui, sans-serif';
+  ctx.fillText('ボタンやボールを見て指でつまむ（Quest はトリガー）', 40, 226, 944);
   for (const b of BUTTONS) {
     ctx.fillStyle = b.color;
     ctx.beginPath(); ctx.roundRect(b.x, BTN_Y, b.w, BTN_H, 28); ctx.fill();
@@ -164,7 +167,8 @@ export async function initXR() {
   if (!ok) return;
 
   renderer.xr.enabled = true;
-  [0, 1].forEach(makeController);
+  // 入力は最大 4 つ受ける（Vision Pro の視線＋ピンチは手の入力の後ろの番号で来ることがある）
+  [0, 1, 2, 3].forEach(makeController);
   renderer.xr.addEventListener('sessionend', onSessionEnd);
 
   const btn = $('vrBtn');
@@ -173,7 +177,7 @@ export async function initXR() {
     if (renderer.xr.isPresenting) { renderer.xr.getSession().end(); return; }
     let session;
     try {
-      session = await navigator.xr.requestSession('immersive-vr', { optionalFeatures: ['local-floor', 'hand-tracking'] });
+      session = await navigator.xr.requestSession('immersive-vr', { optionalFeatures: ['local-floor'] });
     } catch (err) {
       $('err').textContent = 'VR を開始できません: ' + err.message;
       return;

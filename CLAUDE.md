@@ -63,7 +63,8 @@ GitHub Pages で https://6in.github.io/atsumi-san/ に公開。main への push 
   シーンは cm のまま、カメラとコントローラーを 100 倍したリグに入れて実物大（床からラシャ面 80cm、台の +Z 側の長辺の横に立つ）。
   `local-floor` を優先し、使えなければ `local`。XR の near/far はメートル（開始時に 0.02 / 50 にし、終了時に戻す）。
   リグ拡大で three.js の両目まとめた視錐台がずれて近くの物体が消えるので、VR 中は毎フレーム `frustumCulled = false`。
-  操作は select で統一（Quest のトリガー / Vision Pro の視線＋ピンチ）: ボールに当てて押している間ドラッグ（`drag.js` の `placeBall()` を共用）、
+  操作は select で統一（Quest のトリガー / Vision Pro の視線＋ピンチ）。入力は 4 つまで受ける（hand-tracking を要求すると Vision Pro の
+  視線＋ピンチが 3 番目以降になるため要求しない）: ボールに当てて押している間ドラッグ（`drag.js` の `placeBall()` を共用）、
   浮いているパネル（キャンバス描画、カット角・結果表示）の「ショット」「停止」ボタン。Quest のグリップでもショット。
 - `simulation.js`: 2D 剛体（dt 0.5ms、最大 20 秒）。`runSimulation()` が位置と姿勢クォータニオン（角速度を積分）を記録し、
   `tickSim()` が補間再生。最初の衝突時刻 `events.firstHit` で 0.5 秒停止（オプション）。速さは 1〜10 段階で、10 は長辺を二往復する初速 8.31 m/s（`throw.js` の `SPEED_MAX`、中央撞点で頭側クッションから撞いて頭側クッションで止まる速さをシミュレーションのモデルで逆算）。
