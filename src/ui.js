@@ -4,7 +4,7 @@ import { controls } from './scene.js';
 import { updateScene } from './update.js';
 import { setView, refreshEyeView } from './views.js';
 import { scheduleAutosave, saveLayout } from './persistence.js';
-import { startSim } from './simulation.js';
+import { startSim, applySimCueAlpha } from './simulation.js';
 
 function setManualAngle(deg) {
   state.aim = 'manual';
@@ -12,6 +12,10 @@ function setManualAngle(deg) {
   state.angle = Math.round((((deg % 360) + 360) % 360) * 100) / 100 % 360;
   ui.ang.value = state.angle;
   updateScene();
+}
+
+function syncCueAlphaLabel() {
+  $('simCueAlphav').value = state.simCueAlpha === 0 ? '不透明' : `${state.simCueAlpha}%`;
 }
 
 // フォーム・ボタンのイベント
@@ -80,6 +84,12 @@ export function initUI() {
   $('simReset').addEventListener('click', () => { updateScene(); ui.simInfo.textContent = 'リセットしました'; });
   $('simLoop').addEventListener('change', e => { state.simLoop = e.target.checked; scheduleAutosave(); });
   $('simPause').addEventListener('change', e => { state.simPause = e.target.checked; scheduleAutosave(); });
+  $('simCueAlpha').addEventListener('input', e => {
+    state.simCueAlpha = +e.target.value;
+    syncCueAlphaLabel();
+    applySimCueAlpha();
+    scheduleAutosave();
+  });
 }
 
 // state → フォーム
@@ -96,6 +106,8 @@ export function syncUI() {
   $('throwOn').checked = state.throwOn;
   $('simLoop').checked = state.simLoop;
   $('simPause').checked = state.simPause;
+  $('simCueAlpha').value = state.simCueAlpha;
+  syncCueAlphaLabel();
   $('tFollow').value = state.throwFollow;
   $('tSide').value = state.throwSide;
   $('transparent').checked = state.transparent;

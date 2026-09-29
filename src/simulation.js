@@ -2,18 +2,19 @@ import * as THREE from 'three';
 import { Line2 } from 'three/addons/lines/Line2.js';
 import { LineMaterial } from 'three/addons/lines/LineMaterial.js';
 import { LineGeometry } from 'three/addons/lines/LineGeometry.js';
-import { R, TL, TW, GAP_C, GAP_S } from './constants.js';
+import { R, TL, TW, GAP_C, GAP_S, CONTACT_SIZES } from './constants.js';
 import { state } from './state.js';
 import { ui } from './dom.js';
 import { scene } from './scene.js';
 import {
   obBall, cueBall, ghost, ghostCenter, outline, groundContact, groundRing, ballContact, arrowGroup,
   cbLine, cbBackDot, cpLine, cpDots, thickParts, thickWall, triLine, triRight, triArc,
-  tanLine, tanEnd, throwLine, compGhost, compAimLine,
+  tanLine, tanEnd, throwLine, compGhost, compAimLine, simContact,
 } from './objects.js';
 import { ghostPos, approachDir } from './aim.js';
 import { shotSpeedMS, R_M, muBall } from './throw.js';
 import { updateScene, triLabel } from './update.js';
+import { ballColor } from './textures.js';
 
 // 2D の簡易剛体シミュレーション（SI 単位、y 上向き）。
 // ラシャ: 滑り摩擦 → 自然転がり → 転がり抵抗で減速。横回転は一定の角減速。
@@ -141,7 +142,7 @@ function runSimulation() {
   cb.wy = state.throwSide * 1.25 * v / R_M;
   const balls = [cb, ob];
   const frames = [];
-  const events = { firstHit: null, cushions: [0, 0], pocket: [null, null] };
+  const events = { firstHit: null, hitPos: null, cushions: [0, 0], pocket: [null, null] };
   // 姿勢: ワールド軸の角速度 ω を毎ステップ積分（q ← exp(ω dt) · q）
   const quats = balls.map(() => new THREE.Quaternion());
   const dq = new THREE.Quaternion(), axis = new THREE.Vector3();
@@ -157,7 +158,10 @@ function runSimulation() {
       dq.setFromAxisAngle(axis.set(b.wx / w, b.wy / w, b.wz / w), w * SIM.dt);
       quats[i].premultiply(dq);
     });
-    if (collideBalls(cb, ob) && events.firstHit === null) events.firstHit = t;
+    if (collideBalls(cb, ob) && events.firstHit === null) {
+      events.firstHit = t;
+      events.hitPos = [(cb.x + ob.x) * 50, (cb.z + ob.z) * 50];   // 中心の中点 = 接点 [cm]
+    }
     balls.forEach((b, i) => {
       const r = handleRails(b);
       if (r === 'cushion') events.cushions[i]++;
@@ -178,10 +182,31 @@ export const trailMats = [
 ];
 let sim = null;   // { frames, events, duration, t, trails }
 
+// 接点の色: 的球の色（ストライプは帯の色。当たる赤道付近は帯）が明るければ青、暗ければ白
+function contactColor(hex) {
+  const lin = c => { c /= 255; return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4; };
+  const lum = 0.2126 * lin((hex >> 16) & 255) + 0.7152 * lin((hex >> 8) & 255) + 0.0722 * lin(hex & 255);
+  return lum > 0.2 ? 0x1f5fff : 0xffffff;
+}
+
+// 再生中だけ手球を透過する（設定の変更は再生中でもすぐ反映）
+export function applySimCueAlpha() {
+  const a = sim ? 1 - state.simCueAlpha / 100 : 1;
+  const m = cueBall.material;
+  if (m.opacity === a && m.transparent === a < 1) return;
+  m.transparent = a < 1;
+  m.opacity = a;
+  m.depthWrite = a >= 1;
+  m.needsUpdate = true;
+  cueBall.renderOrder = a < 1 ? 2 : 0;   // 的球より後に描いて透けて見えるように
+}
+
 export function stopSim() {
   if (!sim) return;
   sim.trails.forEach(l => { scene.remove(l); l.geometry.dispose(); });
   sim = null;
+  simContact.visible = false;
+  applySimCueAlpha();
   cueBall.visible = obBall.visible = true;
   cueBall.quaternion.identity();
   obBall.quaternion.identity();
@@ -206,6 +231,12 @@ export function startSim() {
     return l;
   });
   sim = { ...res, t: 0, trails, last: performance.now() };
+  applySimCueAlpha();
+  if (res.events.hitPos) {
+    simContact.position.set(res.events.hitPos[0], R, res.events.hitPos[1]);
+    simContact.scale.setScalar(CONTACT_SIZES[state.contactSize] * 0.2);   // 点として見える程度に小さく
+    simContact.material.color.setHex(contactColor(ballColor(state.obNumber)));
+  }
   const e = res.events;
   const fmt = (i, name) => e.pocket[i] !== null ? `${name}: ポケット` : `${name}: クッション ${e.cushions[i]} 回`;
   ui.simInfo.textContent = (e.firstHit === null ? '的球に当たりませんでした。' : '') +
@@ -245,4 +276,6 @@ export function tickSim() {
     mesh.quaternion.slerpQuaternions(a[3], b[3], k);
   });
   sim.trails.forEach(l => { l.geometry.instanceCount = lo; });
+  // 当たった瞬間から接点を表示（その場に残す）
+  simContact.visible = hitT !== null && sim.t >= hitT;
 }
