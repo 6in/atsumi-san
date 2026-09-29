@@ -70,7 +70,7 @@ GitHub Pages で https://6in.github.io/atsumi-san/ に公開。main への push 
   Vision Pro は開始位置から歩いて離れると現実の風景が重なる（OS の安全機能で止められない）ので、歩かずに移動できるようにしている。
 - `simulation.js`: 2D 剛体（dt 0.5ms、最大 20 秒）。`runSimulation()` が位置と姿勢クォータニオン（角速度を積分）を記録し、
   `tickSim()` が補間再生。最初の衝突時刻 `events.firstHit` で 0.5 秒停止（オプション）。
-  衝突位置 `events.hitPos`（中心の中点）に接点 `simContact` を当たった瞬間から表示（色は的球の色の明るさで青か白を自動選択）。再生中は手球を `simCueAlpha`（%）だけ透過（`applySimCueAlpha()`）。速さは 1〜10 段階で、10 は長辺を二往復する初速 8.31 m/s（`throw.js` の `SPEED_MAX`、中央撞点で頭側クッションから撞いて頭側クッションで止まる速さをシミュレーションのモデルで逆算）。
+  衝突位置 `events.hitPos`（中心の中点）に接点 `simContact` を当たった瞬間から表示（色は黒。8 番と寒色系の 2・4・6・10・12・14 番は白）。再生中は手球を `simCueAlpha`（%）だけ透過（`applySimCueAlpha()`）。速さは 1〜10 段階で、10 は長辺を二往復する初速 8.31 m/s（`throw.js` の `SPEED_MAX`、中央撞点で頭側クッションから撞いて頭側クッションで止まる速さをシミュレーションのモデルで逆算）。
 
 ## 動作確認
 
