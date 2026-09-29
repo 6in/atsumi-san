@@ -14,7 +14,6 @@ import {
 import { ghostPos, approachDir } from './aim.js';
 import { shotSpeedMS, R_M, muBall } from './throw.js';
 import { updateScene, triLabel } from './update.js';
-import { ballColor } from './textures.js';
 
 // 2D の簡易剛体シミュレーション（SI 単位、y 上向き）。
 // ラシャ: 滑り摩擦 → 自然転がり → 転がり抵抗で減速。横回転は一定の角減速。
@@ -182,11 +181,10 @@ export const trailMats = [
 ];
 let sim = null;   // { frames, events, duration, t, trails }
 
-// 接点の色: 的球の色（ストライプは帯の色。当たる赤道付近は帯）が明るければ青、暗ければ白
-function contactColor(hex) {
-  const lin = c => { c /= 255; return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4; };
-  const lum = 0.2126 * lin((hex >> 16) & 255) + 0.7152 * lin((hex >> 8) & 255) + 0.0722 * lin(hex & 255);
-  return lum > 0.2 ? 0x1f5fff : 0xffffff;
+// 接点の色: 基本は黒。8 番・えんじ（7・15）・寒色系（青 2・10、紫 4・12、緑 6・14）は白（ストライプは帯の色で判断。当たる赤道付近は帯）
+const WHITE_CONTACT = new Set([2, 4, 6, 7, 8]);
+function contactColor(n) {
+  return WHITE_CONTACT.has((n - 1) % 8 + 1) ? 0xffffff : 0x111111;
 }
 
 // 再生中だけ手球を透過する（設定の変更は再生中でもすぐ反映）
@@ -235,7 +233,7 @@ export function startSim() {
   if (res.events.hitPos) {
     simContact.position.set(res.events.hitPos[0], R, res.events.hitPos[1]);
     simContact.scale.setScalar(CONTACT_SIZES[state.contactSize] * 0.2);   // 点として見える程度に小さく
-    simContact.material.color.setHex(contactColor(ballColor(state.obNumber)));
+    simContact.material.color.setHex(contactColor(state.obNumber));
   }
   const e = res.events;
   const fmt = (i, name) => e.pocket[i] !== null ? `${name}: ポケット` : `${name}: クッション ${e.cushions[i]} 回`;
