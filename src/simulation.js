@@ -181,8 +181,8 @@ export const trailMats = [
 ];
 let sim = null;   // { frames, events, duration, t, trails }
 
-// 接点の色: 基本は黒。8 番と寒色系（青 2・10、紫 4・12、緑 6・14）は白（ストライプは帯の色で判断。当たる赤道付近は帯）
-const WHITE_CONTACT = new Set([2, 4, 6, 8]);
+// 接点の色: 基本は黒。8 番・えんじ（7・15）・寒色系（青 2・10、紫 4・12、緑 6・14）は白（ストライプは帯の色で判断。当たる赤道付近は帯）
+const WHITE_CONTACT = new Set([2, 4, 6, 7, 8]);
 function contactColor(n) {
   return WHITE_CONTACT.has((n - 1) % 8 + 1) ? 0xffffff : 0x111111;
 }
