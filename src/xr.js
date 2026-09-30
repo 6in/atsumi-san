@@ -38,8 +38,9 @@ scene.add(panel);
 // ボタンの領域（キャンバス座標）
 const ROW1 = { y: 236, h: 170, font: 72 }, ROW2 = { y: 436, h: 164, font: 56 };
 const BUTTONS = [
-  { id: 'shot', label: 'ショット', x: 40, w: 452, ...ROW1, color: '#ff9f1a', text: '#1b1e22' },
-  { id: 'stop', label: '停止', x: 532, w: 452, ...ROW1, color: '#3a3f46', text: '#f2f2f2' },
+  { id: 'shot', label: 'ショット', x: 40, w: 400, ...ROW1, color: '#ff9f1a', text: '#1b1e22' },
+  { id: 'stop', label: '停止', x: 464, w: 250, ...ROW1, color: '#3a3f46', text: '#f2f2f2' },
+  { id: 'exit', label: 'VR 終了', x: 738, w: 246, ...ROW1, font: 56, color: '#7a2e2e', text: '#f2f2f2' },
   { id: 'near', label: '手前', x: 40, w: 292, ...ROW2, color: '#2c4f6e', text: '#f2f2f2' },
   { id: 'far', label: '奥', x: 366, w: 292, ...ROW2, color: '#2c4f6e', text: '#f2f2f2' },
   { id: 'cue', label: '手球の後ろ', x: 692, w: 292, ...ROW2, color: '#2c4f6e', text: '#f2f2f2' },
@@ -133,6 +134,7 @@ function onSelectStart(c) {
     const id = buttonAt(hit.uv);
     if (id === 'shot') startSim();
     else if (id === 'stop') { updateScene(); ui.simInfo.textContent = 'リセットしました'; }
+    else if (id === 'exit') renderer.xr.getSession()?.end();
     else if (id) applyStance(id);
     return;
   }
