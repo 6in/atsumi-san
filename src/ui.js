@@ -20,6 +20,11 @@ function syncCueAlphaLabel() {
 
 // フォーム・ボタンのイベント
 export function initUI() {
+  // 左下の情報表示: スマホ（縦は幅 640px 以下、横は高さ 500px 以下）では最初から閉じておく
+  const hud = $('hud'), hudToggle = $('hudToggle');
+  const setHud = open => { hud.classList.toggle('collapsed', !open); hudToggle.setAttribute('aria-expanded', String(open)); };
+  setHud(!matchMedia('(max-width: 640px), (max-height: 500px)').matches);
+  hudToggle.addEventListener('click', () => setHud(hud.classList.contains('collapsed')));
   $('aimCushion').addEventListener('change', e => { state.aimCushion = e.target.checked; updateScene(); });
   $('cbLine').addEventListener('change', e => { state.cbLine = e.target.checked; updateScene(); });
   $('cpLine').addEventListener('change', e => { state.cpLine = e.target.checked; updateScene(); });
