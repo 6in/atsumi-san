@@ -67,6 +67,14 @@
   }
   #hud:not(:has(.stat:not(:empty))) { display: none; }
   #hud .stat:empty { display: none; }
+  /* 開閉ボタン（スマホは最初から閉じる）。HUD 自体はタップを通すので、ボタンだけ押せるようにする */
+  #hudToggle { pointer-events: auto; justify-self: start; background: none; border: 0; padding: 0 0 2px; min-height: 0;
+    color: var(--muted); font-size: 12px; }
+  #hudToggle::after { content: ' ▾'; }
+  #hud.collapsed { padding-top: 6px; padding-bottom: 6px; }
+  #hud.collapsed #hudToggle { padding: 0; }
+  #hud.collapsed #hudToggle::after { content: ' ▸'; }
+  #hud.collapsed .stat { display: none; }
   .row { display: flex; align-items: center; gap: 8px; margin: 6px 0; }
   .row > label:first-child:not(.check) { flex: 0 0 64px; color: var(--muted); }
   .row input[type=range] { flex: 1; min-width: 0; accent-color: var(--accent); }
@@ -122,6 +130,7 @@
     .row select, .row input[type=text] { font-size: 16px; min-height: 40px; }
     #saveList button { padding: 8px 12px; font-size: 14px; }
     .btns button { min-height: 44px; }
+    #hudToggle, #hud.collapsed #hudToggle { padding: 6px 12px 6px 0; font-size: 13px; }
   }
 
   /* スマホ縦: 7 ボタンを横スクロールなしで並べ、ショット/リセットは右下の親指位置へ */
@@ -306,6 +315,7 @@
 </div>
 
 <div id="hud">
+  <button id="hudToggle" type="button" aria-expanded="true" aria-controls="hud">情報</button>
   <div class="stat" id="cutInfo"></div>
   <div class="stat" id="triInfo"></div>
   <div class="stat" id="tanInfo"></div>

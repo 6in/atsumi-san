@@ -33,7 +33,7 @@ GitHub Pages で https://6in.github.io/atsumi-san/ に公開。main への push 
 ## 構成
 
 - `index.html`: 上部ツールバー `#bar`（`.tool` ボタン → プルダウン `.menu#mBall/mGuide/mThick/mArrow/mShot/mView/mSave`）、
-  ショット/停止 `#actions`（`#bar` の外。`#bar` の backdrop-filter が fixed の基準になるため）、左下の数値表示 `#hud`。
+  ショット/停止 `#actions`（`#bar` の外。`#bar` の backdrop-filter が fixed の基準になるため）、左下の数値表示 `#hud`（`#hudToggle` で開閉。スマホ＝幅 640px 以下か高さ 500px 以下では起動時に閉じる）。
   コントロールは ID でイベントを結んでいるので、配置を変えても ID は維持する。
   末尾の classic script: `setPointerCapture` の NotFoundError を無視するラッパーと、エラー表示（読み込み失敗は常時、実行時エラーは 6 秒で消す）。
 
